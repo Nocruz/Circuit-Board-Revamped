@@ -1,5 +1,9 @@
 # Project place file
 /CBRevamped.rbxlx
+/Circuit Board_Revamped.rbxl
+
+# Backup .rblx files
+/.backups
 
 # Roblox Studio lock files
 /*.rbxlx.lock
