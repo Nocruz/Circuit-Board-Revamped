@@ -8,7 +8,6 @@
 ]]
 
 -- Requires and Services
-local Players = game:GetService("Players")
 local TextService = game:GetService("TextService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
@@ -17,7 +16,7 @@ local PermissionService = require(ServerScriptService.Players.PermissionService)
 local GateRegistry = require(ServerScriptService.Gates.Services.GateRegistry)
 local WireService = require(ServerScriptService.Gates.Services.WireService)
 local GateVisuals = require(ReplicatedStorage.Gates.GateVisuals)
-local GridCFrame = require(ReplicatedStorage.GridService.GridCFrame)
+local GridCFrame = require(ReplicatedStorage.GridService)
 
 -- Gate Actions
 local Spawner = require(ServerScriptService.Gates.Actions.Spawner)
@@ -26,7 +25,7 @@ local Wirer = require(ServerScriptService.Gates.Actions.Wirer)
 local Configurer = require(ServerScriptService.Gates.Actions.Configurer)
 
 -- Debugging
-local Logger = require(ReplicatedStorage.Shared.LoggerService)
+local Logger = require(ReplicatedStorage.LoggerService)
 local log = Logger.new("ClientRequestHandler")
 
 -- Cooldown state

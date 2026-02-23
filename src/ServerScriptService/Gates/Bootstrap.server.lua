@@ -2,8 +2,8 @@
 --[[ SERVER BOOTSTRAP
 		This script brings the GateRegistry to life
 		Should run only once on startup, and is responsible of
-		  loading all gate classes into the
-		  registry.
+			loading all gate classes into the
+			registry.
 		Valid classes are decided from ServerScriptService.Gates.Classes.Modules
 ]]
 
@@ -13,7 +13,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local GateRegistry = require(ServerScriptService.Gates.Services.GateRegistry)
 local GateVisuals = require(ReplicatedStorage.Gates.GateVisuals)
-local GridCFrame = require(ReplicatedStorage.GridService.GridCFrame)
+local GridService = require(ReplicatedStorage.GridService)
 
 local Spawner = require(ServerScriptService.Gates.Actions.Spawner)
 
@@ -21,10 +21,10 @@ local Spawner = require(ServerScriptService.Gates.Actions.Spawner)
 local Modules = ServerScriptService.Gates.Classes.Modules
 
 -- Debugging
-local Logger = require(game:GetService("ReplicatedStorage").Shared.LoggerService)
+local Logger = require(ReplicatedStorage.LoggerService)
 local log = Logger.new("Bootstrap")
 
--- ----------------------------- ---- INITIALIZING GATE REGISTRY --------- ---------------------------
+-- ----------------------------- ------ INITIALIZING GATE REGISTRY ------- ---------------------------
 
 log.info("Building GateRegistry's class register")
 for _, module in pairs(Modules:GetChildren()) do
@@ -36,15 +36,13 @@ for _, module in pairs(Modules:GetChildren()) do
 	GateRegistry:registerClass(class)
 end
 
--- ----------------------------- --------- SPAWN SERVER GATES ------------ ---------------------------
+-- ----------------------------- ---------- SPAWN SERVER GATES ----------- ---------------------------
 
 log.info("Spawning server gates from placeholders")
 
-local GridCFrame = require(game:GetService("ReplicatedStorage").GridService.GridCFrame)
-
 for _, placeholder in pairs(workspace.Gates.Server:GetChildren()) do
 	log.info("	Spawning " .. placeholder.Name)
-	assert(placeholder and typeof(placeholder) == "Instance" and (placeholder:IsA("Part") or placeholder:IsA("UnionOperation")), "Placeholder is not a part or union")
+	assert(placeholder and typeof(placeholder) == "Instance" and placeholder:IsA("Part"), "Placeholder is not a part")
 	
 	local class = GateRegistry:tryGetGateClass(placeholder.Name)
 	if not class then 
@@ -55,7 +53,7 @@ for _, placeholder in pairs(workspace.Gates.Server:GetChildren()) do
 	local visuals = GateVisuals.getVisualsFromName(placeholder.Name)
 	assert(visuals)
 	
-	local cframe = GridCFrame.fromCFrame(placeholder:GetPivot())._cframe
+	local cframe = GridService.fromCFrame(placeholder.CFrame)._cframe
 	
 	Spawner.Spawn(class, visuals, cframe, 0)
 	placeholder:Destroy()

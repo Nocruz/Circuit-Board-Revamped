@@ -5,7 +5,6 @@
 ]]
 
 -- Requires and Services
-local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Types
@@ -17,7 +16,7 @@ local COLOR_ON = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(1, 1, 1))
 local COLOR_OFF = ColorSequence.new(Color3.new(0, 0, 0), Color3.new(0, 0, 0))
 
 -- References
-local wirePrefab: Beam = ReplicatedStorage.Shared.Prefabs.Wire
+local wirePrefab: Beam = ReplicatedStorage.Wire
 
 local WiresFolder = Instance.new("Folder")
 WiresFolder.Name = "Wires"

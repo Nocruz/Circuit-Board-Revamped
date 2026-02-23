@@ -8,7 +8,6 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 
 local UpdateService = require(ServerScriptService.Gates.Services.UpdateService)
-local SignalService = require(ServerScriptService.Gates.Services.SignalService)
 local WireService = require(ServerScriptService.Gates.Services.WireService)
 
 local Types = require(ServerScriptService.Gates.Definitions.Types)
@@ -16,7 +15,7 @@ type TGate = Types.TGate
 type TNode = Types.TNode
 
 -- Debugger
-local Logger = require(ReplicatedStorage.Shared.LoggerService)
+local Logger = require(ReplicatedStorage.LoggerService)
 local log = Logger.new("Wire")
 
 local Wirer = {}

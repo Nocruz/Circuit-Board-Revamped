@@ -12,14 +12,14 @@ local StarterPlayerScripts = game:GetService("StarterPlayer"):WaitForChild("Star
 local LocalServices = StarterPlayerScripts.Services
 
 local PointerService = require(LocalServices.PointerService)
-local GridCFrame = require(ReplicatedStorage.GridService.GridCFrame)
+local GridService = require(ReplicatedStorage.GridService)
 
 -- References
 local Terrain = workspace:WaitForChild("Terrain")
 local Baseplate = Terrain.Baseplate
 
 -- Debugging
-local Logger = require(ReplicatedStorage.Shared.LoggerService)
+local Logger = require(ReplicatedStorage.LoggerService)
 local log = Logger.new("BuildMode")
 
 -- Visuals
@@ -84,9 +84,9 @@ local function movePreviewToCursor(preview: Model?)
 		return
 	end
 	
-	local cframe = GridCFrame.fromCFrame(CFrame.new(PointerService.HitPosition) * CFrame.Angles(0, math.rad(rotation), 0))
+	local cframe = GridService.fromCFrame(CFrame.new(PointerService.HitPosition) * CFrame.Angles(0, math.rad(rotation), 0))
 	if PointerService.HoveredGate then
-		cframe = GridCFrame.Move(cframe, cframe.Position + GridCFrame.getSurfaceNormal(PointerService.HitPosition, GridCFrame.fromCFrame(PointerService.HoveredGate:GetPivot())))
+		cframe = GridService.Move(cframe, cframe.Position + GridService.getSurfaceNormal(PointerService.HitPosition, GridService.fromCFrame(PointerService.HoveredGate:GetPivot())))
 	end
 	preview:PivotTo(cframe._cframe)
 	
@@ -110,7 +110,7 @@ function BuildMode.Activate(gate: Model)
 	preview.Parent = PointerService.RaycastFilter
 	
 	do -- Rotate the preview model
-		local _, radians = GridCFrame.fromCFrame(preview:GetPivot())._cframe:ToOrientation()
+		local _, radians = GridService.fromCFrame(preview:GetPivot())._cframe:ToOrientation()
 		rotation = math.deg(radians)
 	end
 	

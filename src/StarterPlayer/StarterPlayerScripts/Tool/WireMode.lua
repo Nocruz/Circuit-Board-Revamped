@@ -13,12 +13,12 @@ local LocalServices = StarterPlayerScripts.Services
 local PointerService = require(LocalServices.PointerService)
 
 -- Debugging
-local Logger = require(ReplicatedStorage.Shared.LoggerService)
+local Logger = require(ReplicatedStorage.LoggerService)
 local log = Logger.new("WireMode")
 
 -- Visuals
 local PointerBallPrefab: Part = ReplicatedStorage.Client.UI.WireMode.PointerBall
-local WirePrefab: Beam = ReplicatedStorage.Shared.Prefabs.Wire
+local WirePrefab: Beam = ReplicatedStorage.Wire
 
 -- State
 local pointerBall: Part? = nil

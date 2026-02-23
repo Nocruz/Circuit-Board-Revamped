@@ -7,77 +7,63 @@
 -- Requires and Services
 local ReplicatedStorage	= game:GetService("ReplicatedStorage")
 
+-- References
 local VisualsFolder = ReplicatedStorage.Gates.Visuals
 
 -- --------------------------------------- TYPE DEFINITIONS ----------- ---------------------------
 
--- Types
 export type TGateVisuals = {
-	MainColor   : Color3,
+	MainColor:    Color3,
 	MainMaterial: Enum.Material,
-	DisplayName	: string,
-	PrefabName	: string,
+	DisplayName:  string,
+	PrefabName:   string,
 	
 	OutputOffset: Vector2,
-	InputOffsets:{ [string]: Vector2 }
+	InputOffsets: { [string]: Vector2 }
+}
+
+-- Essentially Option<T> values, where Nil or errors during extract collapse to default
+local BaseConfigurations: {
+		MainColor:    { default: Color3, extract: (v: Color3Value) -> Color3? },
+		MainMaterial: { default: Enum.Material, extract: (v: StringValue) -> Enum.Material? },
+		DisplayName:  { default: string, extract: (v: StringValue) -> string? },
+		PrefabName:   { default: string, extract: (v: StringValue) -> string? },
+		OutputOffset: { default: Vector2, extract: (v: Vector3Value) -> Vector2? },
+	} = {
+	MainColor    = { default = Color3.new(1, 0.2, 0.7), extract = function(v: Color3Value) return v.Value end },
+	MainMaterial = { default = Enum.Material.Concrete,    extract = function(v: StringValue) return Enum.Material:FromName(v.Value) end },
+	PrefabName   = { default = "BasicGate",               extract = function(v: StringValue) return v.Value end },
+	DisplayName  = { default = "Gate",                    extract = function(v: StringValue) return v.Value end },
+
+	OutputOffset = { default = Vector2.zero,              extract = function(v: Vector3Value) return Vector2.new(v.Value.X, v.Value.Z) end }
+	-- Handle InputOffsets differently
 }
 
 export type TGateVisualsRegistry = {
 	getVisualsFromName: (name: string) -> TGateVisuals?,
-	
 	validateVisuals: (visuals: TGateVisuals) -> boolean
 }
 
 -- ----------------------------- ---------- HELPER FUNCTIONS ---------- ---------------------------
 
-local function getValueOrDefault<T, V>(config: Instance, name: string, className: string, default: () -> V, extract: (T) -> V) : V
+local function getValueOrDefault<T>(config: Configuration, name: string, default: T, extract: (any) -> T) : T
 	local obj = config:FindFirstChild(name)
-	if obj and obj.ClassName == className then return extract(obj) end
-	return default()
+
+	local success, value = pcall(extract, obj)
+	return if success and type(value) ~= "nil" then value else default
 end
 
 local function getVisualsFromConfig(config: Configuration): TGateVisuals
-	local visuals = {
-		MainColor = getValueOrDefault(
-			config,
-			"MainColor",
-			"Color3Value",
-			function() return Color3.new(1, 0.2, 0.7) end,
-			function(v) return v.Value end
-		),
-		MainMaterial = getValueOrDefault(
-			config,
-			"MainMaterial",
-			"StringValue",
-			function() return Enum.Material.Concrete end,
-			function(v) return Enum.Material:FromName(v.Value) or Enum.Material.Concrete end
-		),
-		PrefabName = getValueOrDefault(
-			config,
-			"PrefabName",
-			"StringValue",
-			function() return "BasicGate" end,
-			function(v) return v.Value end
-		),
-		DisplayName = getValueOrDefault(
-			config,
-			"DisplayName",
-			"StringValue",
-			function() return config.Name end,
-			function(v) return v.Value end
-		),
+	local configTable = table.clone(BaseConfigurations)
+	configTable.DisplayName.default = config.Name
 
-		OutputOffset = getValueOrDefault(
-			config,
-			"OutputOffset",
-			"Vector3Value",
-			function() return Vector2.zero end,
-			function(v: Vector3Value) return Vector2.new(v.Value.X, v.Value.Z) end
-		),
-
-		InputOffsets = {}
-	} :: TGateVisuals
-
+	-- Collapse Option<> for each BaseConfiguration
+	local visuals = { InputOffsets = {} } :: TGateVisuals
+	for configuration, data in pairs(configTable) do
+		visuals[configuration] = getValueOrDefault(config, configuration, data.default, data.extract)
+	end
+	
+	-- Read for InputOffsets (if any)
 	local InputOffsets = config:FindFirstChild("InputOffsets")
 	if InputOffsets then
 		for _, child in InputOffsets:GetChildren() do
@@ -105,15 +91,11 @@ local GateVisuals: TGateVisualsRegistry = {
 		if not visuals then return false end
 		if type(visuals) ~= "table" then return false end
 
-		local hasAllProperties =
-			typeof(visuals.MainColor) == "Color3" and
-			typeof(visuals.MainMaterial) == "EnumItem" and
-			typeof(visuals.DisplayName) == "string" and
-			typeof(visuals.OutputOffset) == "Vector2" and
-			typeof(visuals.InputOffsets) == "table"
-		if not hasAllProperties then return false end
-
-		if visuals.MainMaterial.EnumType ~= Enum.Material then return false end
+		local hasAllProperties = false
+		for configuration, data in pairs(BaseConfigurations) do
+			hasAllProperties = visuals[configuration] and typeof(visuals[configuration]) == typeof(data.default)
+			if not hasAllProperties then return false end
+		end
 
 		for key, value in pairs(visuals.InputOffsets) do
 			if typeof(key) ~= "string" or typeof(value) ~= "Vector2" then return false end

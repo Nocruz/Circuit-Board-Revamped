@@ -4,9 +4,6 @@
 		Permissions are stored as: [OwnerId] = { [Action] = { [AllowedUserId] = true } }
 ]]
 
--- Requires and Services
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
 -- ----------------------------- ---------- TYPE DEFINITIONS ----------- -----------------------------
 
 export type ActionType = "Spawn" | "Move" | "Wire" | "Delete" | "Configure" | "Interact"

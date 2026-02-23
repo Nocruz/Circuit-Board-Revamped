@@ -12,7 +12,7 @@ local LocalServices = StarterPlayerScripts.Services
 local PointerService = require(LocalServices.PointerService)
 
 -- Debugging
-local Logger = require(ReplicatedStorage.Shared.LoggerService)
+local Logger = require(ReplicatedStorage.LoggerService)
 local log = Logger.new("PliersMode")
 
 -- Visuals

@@ -7,7 +7,6 @@
 local ServerScriptService = game:GetService("ServerScriptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local GridCFrame = require(ReplicatedStorage.GridService.GridCFrame)
 local GateVisuals = require(ReplicatedStorage.Gates.GateVisuals)
 local UpdateService = require(ServerScriptService.Gates.Services.UpdateService)
 
@@ -15,12 +14,14 @@ local GateRegistry = require(ServerScriptService.Gates.Services.GateRegistry)
 local GateModel = require(ServerScriptService.Gates.Definitions.GateModel)
 
 -- Debugging
-local logger = require(ReplicatedStorage.Shared.LoggerService)
+local logger = require(ReplicatedStorage.LoggerService)
 local log = logger.new("Spawn")
 
 -- State
 local lastId = 0
-local function nextId(): number lastId = lastId+1 return lastId end
+local function getId(): number lastId = lastId+1
+	return lastId
+end
 
 local Spawner = {}
 
@@ -31,7 +32,7 @@ function Spawner.Spawn(class: GateRegistry.TGateClass, visuals: GateVisuals.TGat
 	log.info("	Grid Position: " .. tostring(cframe.Position))
 	log.info("	Owner " .. if ownerId == 0 then "Server" else tostring(ownerId))
 	
-	nextId()
+	getId()
 	
 	-- Creates gateModel
 	local gateModel = GateModel.instantiate(class, visuals, cframe) :: GateModel.TGateModel | any

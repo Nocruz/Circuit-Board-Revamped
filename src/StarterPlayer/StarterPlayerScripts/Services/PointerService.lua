@@ -10,7 +10,7 @@
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local Workspace		   = game:GetService("Workspace")
+local Workspace		     = game:GetService("Workspace")
 
 -- References
 local player = Players.LocalPlayer :: Player
@@ -42,7 +42,7 @@ local lastPointerPos: Vector3? = nil
 local currentResult: RaycastResult? = nil
 
 -- Debugging
-local logger = require(game:GetService("ReplicatedStorage").Shared.LoggerService)
+local logger = require(game:GetService("ReplicatedStorage").LoggerService)
 local log = logger.new("PointerService")
 
 local DEBUG_BALL = false -- toggle debug visualization

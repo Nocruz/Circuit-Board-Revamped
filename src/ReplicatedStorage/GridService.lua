@@ -1,5 +1,5 @@
 --!strict
---[[ GRID CFRAME
+--[[ GRID SERVICE
 		Stores a CFrame, it's position on the grid and it's rotation in 4 steps.
 ]]
 
@@ -14,11 +14,13 @@ export type TGridCFrame = {
 	Rotation: TRotation,
 }
 
-local GridCFrame = {}
+local GridService = {}
 
-function GridCFrame.fromCFrame(cframe: CFrame): TGridCFrame
+-- ----------------------------- ------------- CONSTRUCTORS -------------- ---------------------------
+
+function GridService.fromCFrame(cframe: CFrame): TGridCFrame
 	local position = Vector3.new(math.round(cframe.X / STEP_XZ) * STEP_XZ, math.round(cframe.Y / STEP_Y) * STEP_Y, math.round(cframe.Z / STEP_XZ) * STEP_XZ)
-	local rotation, rotVector
+	local rotation:TRotation, rotVector
 	
 	local lookX, lookZ = cframe.LookVector.X, cframe.LookVector.Z
 	if math.abs(lookZ) >= math.abs(lookX) then
@@ -47,17 +49,18 @@ function GridCFrame.fromCFrame(cframe: CFrame): TGridCFrame
 	}
 end
 
-
+-- ----------------------------- ------------ TRANSFORMATIONS ------------ ---------------------------
 -- Offset is in grid units
-function GridCFrame.Move(from: TGridCFrame, to: Vector3): TGridCFrame
-	return GridCFrame.fromCFrame(CFrame.new(to) * from._cframe.Rotation)
+
+function GridService.Move(from: TGridCFrame, to: Vector3): TGridCFrame
+	return GridService.fromCFrame(CFrame.new(to) * from._cframe.Rotation)
 end
 
-function GridCFrame.Rotate(from: TGridCFrame, direction: "Clockwise" | "Counter"): TGridCFrame
-	return GridCFrame.fromCFrame(from._cframe * from._cframe.Rotation * CFrame.Angles(0, math.rad(90 * if direction == "Clockwise" then 1 else -1), 0))
+function GridService.Rotate(from: TGridCFrame, direction: "Clockwise" | "Counter"): TGridCFrame
+	return GridService.fromCFrame(from._cframe * from._cframe.Rotation * CFrame.Angles(0, math.rad(90 * if direction == "Clockwise" then 1 else -1), 0))
 end
 
-function GridCFrame.getSurfaceNormal(pos: Vector3, targetCFrame: TGridCFrame): Vector3
+function GridService.getSurfaceNormal(pos: Vector3, targetCFrame: TGridCFrame): Vector3
 	local relative = pos - (targetCFrame.Position + Vector3.yAxis * STEP_Y / 2)
 
 	local nx, ny, nz = math.abs(relative.X), math.abs(relative.Y) * 2, math.abs(relative.Z)
@@ -72,4 +75,6 @@ function GridCFrame.getSurfaceNormal(pos: Vector3, targetCFrame: TGridCFrame): V
 	end
 end
 
-return GridCFrame
+-- ----------------------------- ------------- END OF MODULE ------------- ---------------------------
+
+return GridService

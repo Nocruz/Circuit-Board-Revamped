@@ -6,7 +6,6 @@ local PointerService = require(game:GetService("StarterPlayer"):FindFirstChild("
 local gateUIPath = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("OwnerText")
 
 local player = Players.LocalPlayer
-local Players = game:GetService("Players")
 
 -- Clone the UI once and parent it to PlayerGui
 local displayUI = gateUIPath:Clone()
