@@ -2,35 +2,28 @@
   "name": "Circuit Board: Revamped",
   "tree": {
     "$className": "DataModel",
-    
-
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
       "$path": "src/ReplicatedStorage"
     },
-
     "ServerScriptService": {
       "$className": "ServerScriptService",
       "$path": "src/ServerScriptService"
     },
-
     "StarterPack": {
       "$className": "StarterPack",
       "$path": "src/StarterPack"
     },
-
     "StarterPlayer": {
       "$className": "StarterPlayer",
-
       "StarterCharacterScripts": {
         "$className": "StarterCharacterScripts",
         "$path": "src/StarterPlayer/StarterCharacterScripts"
       },
-
       "StarterPlayerScripts": {
         "$className": "StarterPlayerScripts",
         "$path": "src/StarterPlayer/StarterPlayerScripts"
-      },
+      }
     }
   }
 }

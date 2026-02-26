@@ -12,14 +12,14 @@ local StarterPlayerScripts = game:GetService("StarterPlayer"):WaitForChild("Star
 local LocalServices = StarterPlayerScripts.Services
 
 local PointerService = require(LocalServices.PointerService)
-local GridService = require(ReplicatedStorage.GridService)
+local GridService = require(ReplicatedStorage.Services.GridService)
 
 -- References
 local Terrain = workspace:WaitForChild("Terrain")
 local Baseplate = Terrain.Baseplate
 
 -- Debugging
-local Logger = require(ReplicatedStorage.LoggerService)
+local Logger = require(ReplicatedStorage.Services.LoggerService)
 local log = Logger.new("BuildMode")
 
 -- Visuals

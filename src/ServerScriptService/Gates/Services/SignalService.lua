@@ -1,27 +1,18 @@
 --!strict
 --[[ SIGNAL SERVICE
-		Global methods and definitions for handling signals
-		A signal is the data type Gates output
+		Global methods and definitions for handling signals.
+		A signal represents the information in wires.
 		
 		Signals are coded this way so multiple versions of the "same" value
 		  have the same result in game.
-		This way, a string signal will never have a numeric value, because if it has,
+		This way, a 'string' signal will never have a 'numeric' value, because if it has,
 		  will be converted to a numeric signal. That's why a boolean output will
-		  show as "true" on a DISPLAY.
+		  show as "true" on a DISPLAY, even if the input was actually "TRUE"
 ]]
-
--- Requires and Services
-local ServerScriptService = game:GetService("ServerScriptService")
 
 -- ----------------------------- ---------- TYPE DEFINITIONS ---------- ---------------------------
 
-local Types = require(ServerScriptService.Gates.Definitions.Types)
-export type TSignal = Types.TSignal
-
--- ----------------------------- ----------- HELPER METHODS ----------- ---------------------------
-
--- For string to number formatting
-local function isScientificNotation(s: string): boolean return s:match("^[+-]?%d+%.?%d*[eE][+-]?%d+$") ~= nil end
+export type TSignal = string | number | boolean
 
 -- ----------------------------- --------- GLOBALS DEFINITION --------- ---------------------------
 
@@ -29,57 +20,73 @@ local SignalService = {}
 
 -- ----------------------------- ------------- CASTING ---------------- -----------------------------
 
+-- Just for Client-Server use, probably.
+-- Signals should only live in server tho.
+function SignalService.isValidSignal(value: any): boolean
+	if type(value) == "boolean" then return true end
+	if type(value) == "number"  then return true end
+	if type(value) == "string"  then return true end
+	return false
+end
+
 function SignalService.toBoolean(signal: TSignal): boolean
 	if type(signal) == "boolean" then return signal end
-	if type(signal) == "number" then return signal ~= 0 end
-	if type(signal) == "string" then return signal ~= "" and signal ~= "0" and signal:lower() ~= "false" end
+	if type(signal) == "number"  then return signal ~= 0 end
+	if type(signal) == "string"  then return signal ~= "" and signal ~= "0" and signal:lower() ~= "false" end
 
-	warn("Invalid signal type. Must be string, number, or boolean.")
-	return false
+	error("Invalid signal type. Must be string, number, or boolean.")
 end
 
 function SignalService.toNumber(signal: TSignal): number
 	if type(signal) == "boolean" then return if signal then 1 else 0 end
-	if type(signal) == "number" then return signal end
-	if type(signal) == "string" then return tonumber(signal) or #signal end
+	if type(signal) == "number"  then return signal end
+	if type(signal) == "string"  then return tonumber(signal) or #signal end
 
-	warn("Invalid signal type. Must be string, number, or boolean.")
-	return 0
+	error("Invalid signal type. Must be string, number, or boolean.")
 end
 
 function SignalService.toString(signal: TSignal): string
-	local result = ""
-	if type(signal) == "string" then result = signal end
-	if tostring(signal) then result = tostring(signal) end
-	
-	return result
-end
-
--- ----------------------------- ----------- SIGNAL CREATION ---------- ---------------------------
-
-function SignalService.normalize(value: any): TSignal
-	if type(value) == "number" or type(value) == "string" or type(value) == "boolean" then
-		if type(value) == "string" then
-			local num = tonumber(value)
-			if num and (tostring(num) == value or isScientificNotation(value)) then return num end
-			if value:lower() == "true"  then return true  end
-			if value:lower() == "false" then return false end
-		end
-		return value
-	end
-	
-	return false
+	return tostring(signal)
 end
 
 -- ----------------------------- ------------ COMPARISONS ------------- -----------------------------
 
+-- Should work. Probably
 function SignalService.equals(p1: TSignal, p2: TSignal): boolean
 	if type(p1) == type(p2) then return p1 == p2 end
-	return SignalService.toNumber(p1) == SignalService.toNumber(p2)
+	return SignalService.toString(p1) == SignalService.toString(p2)
 end
 
-function SignalService.isGreater(p1: TSignal, p2: TSignal): boolean
-	return SignalService.toNumber(p1) > SignalService.toNumber(p2)
+-- A signal is as strong as the amount of information it holds (Probably)
+-- This function should only be used to collapse a set of signals
+-- 1. Strings are always stronger.
+-- 2. Longer strings are stronger.
+-- 3. A number is as strong as its opposite
+-- 4. True == 1, False == 0
+function SignalService.isStronger(s1: TSignal, s2: TSignal): boolean
+	if type(s1) == "string" and type(s2) == "string" then return #s1 > #s2 end
+	if type(s1) == "string" and type(s2) ~= "string" then return true end
+	if type(s1) ~= "string" and type(s2) == "string" then return false end
+
+	local s1Value = math.abs(SignalService.toNumber(s1))
+	local s2Value = math.abs(SignalService.toNumber(s2))
+
+	return s1Value > s2Value
+end
+
+-- ----------------------------- ------------ COLLECTIONS ------------- -----------------------------
+
+function SignalService.Collapse(collection: { TSignal }): TSignal
+	if next(collection) == nil then return false end
+	local strongest: TSignal?
+	
+	for _, signal in ipairs(collection) do
+		if strongest == nil or SignalService.isStronger(signal, strongest) then
+			strongest = signal
+		end
+	end
+
+	return strongest :: TSignal
 end
 
 -- ----------------------------- ----------- END OF MODULE ------------ -----------------------------

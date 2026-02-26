@@ -36,7 +36,7 @@ CounterClass.validAttributes = {
 }
 
 function CounterClass.new(id: number, ownerId: number, gateModel: Types.TGateModel): TGate
-	local gate = setmetatable(GateClass.new(id, ownerId, gateModel), CounterClass) :: TGate
+	local gate = setmetatable(GateClass.CreateGate(id, ownerId, gateModel), CounterClass) :: TGate
 
 	gate.Class = CounterClass
 	

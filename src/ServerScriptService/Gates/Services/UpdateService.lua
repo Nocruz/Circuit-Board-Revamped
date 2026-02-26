@@ -9,7 +9,7 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
-local Logger = require(ReplicatedStorage.LoggerService)
+local Logger = require(ReplicatedStorage.Services.LoggerService)
 local log = Logger.new("UpdateManager")
 
 local Types = require(ServerScriptService.Gates.Definitions.Types)

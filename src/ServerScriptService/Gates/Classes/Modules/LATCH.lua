@@ -29,7 +29,7 @@ LatchClass.inputs = { "Input", "Bridge" }
 LatchClass.output = "Output"
 
 function LatchClass.new(id: number, ownerId: number, gateModel: Types.TGateModel): TGate
-	local gate = setmetatable(GateClass.new(id, ownerId, gateModel), LatchClass) :: TGate
+	local gate = setmetatable(GateClass.CreateGate(id, ownerId, gateModel), LatchClass) :: TGate
 
 	gate.Class = LatchClass
 	

@@ -7,12 +7,16 @@
 local STEP_XZ = 1
 local STEP_Y  = 1
 
+-- ----------------------------- ---------- TYPE DEFINITIONS ----------- ---------------------------
+
 export type TRotation = "PosX" | "NegX" | "PosZ" | "NegZ"
 export type TGridCFrame = {
 	_cframe: CFrame,
 	Position: Vector3,
 	Rotation: TRotation,
 }
+
+-- ----------------------------- --------- SERVICE DEFINITION --------- ---------------------------
 
 local GridService = {}
 

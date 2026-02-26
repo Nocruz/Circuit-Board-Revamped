@@ -29,7 +29,7 @@ export type TGateSchema = {
 	inputs: { string },
 	hasOutput: boolean?,
 	Update: (gate: TGate, origin: "Signal" | "Schedule") -> TSignal,
-	Attributes: AttributeService.AttributeTypeTable?,
+	Attributes: AttributeService.TAttributeTypeTable?,
 	
 	Color: Color3?,
 	Material: Enum.Material?,
@@ -99,7 +99,7 @@ function Factory.create(schema: TGateSchema): TGateClass
 	end
 
 	function newClass.new(id: number, ownerId: number, gateModel: Types.TGateModel): TGate
-		local gate = setmetatable(GateClass.new(id, ownerId, gateModel), newClass)
+		local gate = setmetatable(GateClass.CreateGate(id, ownerId, gateModel), newClass)
 		
 		gate.Class = newClass
 		

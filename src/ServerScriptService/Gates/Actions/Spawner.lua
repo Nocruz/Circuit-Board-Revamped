@@ -7,14 +7,14 @@
 local ServerScriptService = game:GetService("ServerScriptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local GateVisuals = require(ReplicatedStorage.Gates.GateVisuals)
+local GateVisualsService = require(ReplicatedStorage.Services.GateVisualsService)
 local UpdateService = require(ServerScriptService.Gates.Services.UpdateService)
 
-local GateRegistry = require(ServerScriptService.Gates.Services.GateRegistry)
+local GateRegistry = require(ServerScriptService.Gates.Definitions.GateRegistry)
 local GateModel = require(ServerScriptService.Gates.Definitions.GateModel)
 
 -- Debugging
-local logger = require(ReplicatedStorage.LoggerService)
+local logger = require(ReplicatedStorage.Services.LoggerService)
 local log = logger.new("Spawn")
 
 -- State
@@ -27,7 +27,7 @@ local Spawner = {}
 
 -- ----------------------------- ----------- SPAWN GATE --------------- ---------------------------
 
-function Spawner.Spawn(class: GateRegistry.TGateClass, visuals: GateVisuals.TGateVisuals, cframe: CFrame, ownerId: number)
+function Spawner.Spawn(class: GateRegistry.TGateClass, visuals: GateVisualsService.TGateVisuals, cframe: CFrame, ownerId: number)
 	log.info("Spawning " .. class.name)
 	log.info("	Grid Position: " .. tostring(cframe.Position))
 	log.info("	Owner " .. if ownerId == 0 then "Server" else tostring(ownerId))

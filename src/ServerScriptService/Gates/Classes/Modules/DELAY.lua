@@ -38,7 +38,7 @@ DelayClass.output = "Output"
 DelayClass.validAttributes = { ["Delay"] = AttributeService.new(0.5, {}, {function(value) return value >= 0 end }) }
 
 function DelayClass.new(id: number, ownerId: number, gateModel: Types.TGateModel): TGate
-	local gate = setmetatable(GateClass.new(id, ownerId, gateModel), DelayClass) :: TGate
+	local gate = setmetatable(GateClass.CreateGate(id, ownerId, gateModel), DelayClass) :: TGate
 
 	gate.Class = DelayClass
 	

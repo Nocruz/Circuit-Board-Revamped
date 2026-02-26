@@ -34,7 +34,7 @@ TimerClass.validAttributes = {
 }
 
 function TimerClass.new(id: number, ownerId: number, gateModel: Types.TGateModel): TGate
-	local gate = setmetatable(GateClass.new(id, ownerId, gateModel), TimerClass) :: TGate
+	local gate = setmetatable(GateClass.CreateGate(id, ownerId, gateModel), TimerClass) :: TGate
 
 	gate.Class = TimerClass
 

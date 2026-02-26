@@ -13,10 +13,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local PermissionService = require(ServerScriptService.Players.PermissionService)
-local GateRegistry = require(ServerScriptService.Gates.Services.GateRegistry)
+local GateRegistry = require(ServerScriptService.Gates.Definitions.GateRegistry)
 local WireService = require(ServerScriptService.Gates.Services.WireService)
-local GateVisuals = require(ReplicatedStorage.Gates.GateVisuals)
-local GridCFrame = require(ReplicatedStorage.GridService)
+local GateVisualsService = require(ReplicatedStorage.Services.GateVisualsService)
+local GridService = require(ReplicatedStorage.Services.GridService)
 
 -- Gate Actions
 local Spawner = require(ServerScriptService.Gates.Actions.Spawner)
@@ -25,7 +25,7 @@ local Wirer = require(ServerScriptService.Gates.Actions.Wirer)
 local Configurer = require(ServerScriptService.Gates.Actions.Configurer)
 
 -- Debugging
-local Logger = require(ReplicatedStorage.LoggerService)
+local Logger = require(ReplicatedStorage.Services.LoggerService)
 local log = Logger.new("ClientRequestHandler")
 
 -- Cooldown state
@@ -133,7 +133,7 @@ end
 -- ----------------------------- -------------- SPAWN EVENT ------------ -----------------------------
 
 local spawnFunction = ReplicatedStorage.Client.Events:FindFirstChild("Spawn")
-spawnFunction.OnServerInvoke = function(player: Player, id: number, cframe: CFrame, visuals: GateVisuals.TGateVisuals): (boolean, string?)
+spawnFunction.OnServerInvoke = function(player: Player, id: number, cframe: CFrame, visuals: GateVisualsService.TGateVisuals): (boolean, string?)
 	if isCooldowned(player) then 
 		log.info(player.Name .. " tried spawning a gate, but is still in cooldown")
 		return false, "Too fast!"
@@ -163,7 +163,7 @@ spawnFunction.OnServerInvoke = function(player: Player, id: number, cframe: CFra
 		if p.Y < -5 then log.warn("Failure! 'cframe' parameter is too low"); return false, "Too low" end
 		if p.X ~= p.X or p.Y ~= p.Y or p.Z ~= p.Z then log.warn("Failure! 'cframe' parameter has NaN values"); return false, "Invalid position" end
 	end
-	if not GateVisuals.validateVisuals(visuals) then
+	if not GateVisualsService.validateVisuals(visuals) then
 		log.warn("Failure! 'visuals' is not a valid visual")
 		return false, "Invalid visuals! Check with a mod"
 	end
@@ -189,7 +189,7 @@ spawnFunction.OnServerInvoke = function(player: Player, id: number, cframe: CFra
 	visuals.DisplayName = filteredDisplayName
 	visuals.DisplayName = string.sub(visuals.DisplayName, 1, 32)
 	
-	Spawner.Spawn(gate.Class, visuals, GridCFrame.fromCFrame(cframe)._cframe, player.UserId)
+	Spawner.Spawn(gate.Class, visuals, GridService.fromCFrame(cframe)._cframe, player.UserId)
 	return true, nil
 end
 
@@ -244,7 +244,7 @@ moveFunction.OnServerInvoke = function(player: Player, id: number, cframe: CFram
 		return false, "No gate model. Check with a mod"
 	end
 	
-	Mover.Move(gate.Model, GridCFrame.fromCFrame(cframe)._cframe)
+	Mover.Move(gate.Model, GridService.fromCFrame(cframe)._cframe)
 	
 	-- Update wire hitboxes
 	if gate.Inputs then

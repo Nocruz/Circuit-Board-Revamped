@@ -28,7 +28,7 @@ SwitchClass.inputs = { "Input" }
 SwitchClass.output = "Output"
 
 function SwitchClass.new(id: number, ownerId: number, gateModel: Types.TGateModel): TGate
-	local gate = setmetatable(GateClass.new(id, ownerId, gateModel), SwitchClass) :: TGate
+	local gate = setmetatable(GateClass.CreateGate(id, ownerId, gateModel), SwitchClass) :: TGate
 
 	gate.Class = SwitchClass
 

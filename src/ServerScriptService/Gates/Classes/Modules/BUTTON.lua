@@ -35,7 +35,7 @@ ButtonClass.validAttributes = {
 local PRESSED_COLOR = Color3.fromRGB(255, 245, 112)
 
 function ButtonClass.new(id: number, ownerId: number, gateModel: Types.TGateModel): TGate
-	local gate = setmetatable(GateClass.new(id, ownerId, gateModel), ButtonClass) :: TGate
+	local gate = setmetatable(GateClass.CreateGate(id, ownerId, gateModel), ButtonClass) :: TGate
 
 	gate.Class = ButtonClass
 	

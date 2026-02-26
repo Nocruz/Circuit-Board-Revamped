@@ -28,7 +28,7 @@ PixelClass.inputs = { "R", "G", "B" }
 PixelClass.output = nil
 
 function PixelClass.new(id: number, ownerId: number, gateModel: Types.TGateModel): TGate
-	local gate = setmetatable(GateClass.new(id, ownerId, gateModel), PixelClass) :: TGate
+	local gate = setmetatable(GateClass.CreateGate(id, ownerId, gateModel), PixelClass) :: TGate
 
 	gate.Class = PixelClass
 

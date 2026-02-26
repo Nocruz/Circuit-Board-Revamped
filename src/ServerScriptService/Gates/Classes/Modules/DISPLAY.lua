@@ -28,7 +28,7 @@ DisplayClass.inputs = { "Input" }
 DisplayClass.output = nil
 
 function DisplayClass.new(id: number, ownerId: number, gateModel: Types.TGateModel): TGate
-	local gate = setmetatable(GateClass.new(id, ownerId, gateModel), DisplayClass) :: TGate
+	local gate = setmetatable(GateClass.CreateGate(id, ownerId, gateModel), DisplayClass) :: TGate
 
 	gate.Class = DisplayClass
 

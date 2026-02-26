@@ -11,9 +11,9 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
-local GateRegistry = require(ServerScriptService.Gates.Services.GateRegistry)
-local GateVisuals = require(ReplicatedStorage.Gates.GateVisuals)
-local GridService = require(ReplicatedStorage.GridService)
+local GridService = require(ReplicatedStorage.Services.GridService)
+local GateVisualsService = require(ReplicatedStorage.Services.GateVisualsService)
+local GateRegistry = require(ServerScriptService.Gates.Definitions.GateRegistry)
 
 local Spawner = require(ServerScriptService.Gates.Actions.Spawner)
 
@@ -21,7 +21,7 @@ local Spawner = require(ServerScriptService.Gates.Actions.Spawner)
 local Modules = ServerScriptService.Gates.Classes.Modules
 
 -- Debugging
-local Logger = require(ReplicatedStorage.LoggerService)
+local Logger = require(ReplicatedStorage.Services.LoggerService)
 local log = Logger.new("Bootstrap")
 
 -- ----------------------------- ------ INITIALIZING GATE REGISTRY ------- ---------------------------
@@ -50,7 +50,7 @@ for _, placeholder in pairs(workspace.Gates.Server:GetChildren()) do
 		continue 
 	end
 	
-	local visuals = GateVisuals.getVisualsFromName(placeholder.Name)
+	local visuals = GateVisualsService.Get(placeholder.Name)
 	assert(visuals)
 	
 	local cframe = GridService.fromCFrame(placeholder.CFrame)._cframe

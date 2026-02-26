@@ -28,7 +28,7 @@ LightClass.inputs = { "R", "G", "B" }
 LightClass.output = nil
 
 function LightClass.new(id: number, ownerId: number, gateModel: Types.TGateModel): TGate
-	local gate = setmetatable(GateClass.new(id, ownerId, gateModel), LightClass) :: TGate
+	local gate = setmetatable(GateClass.CreateGate(id, ownerId, gateModel), LightClass) :: TGate
 
 	gate.Class = LightClass
 

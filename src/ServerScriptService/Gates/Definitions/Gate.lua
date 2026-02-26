@@ -1,92 +1,39 @@
 --!strict
 --[[ GATE
-		This is the base gate.
-		Represents an GateClass's object.
+		This module represents a single Gate object.
+		It should be as lightweight as possible, as hundrends of these per player may exist.
+
+		Different 'types' of gates are all Gate objects, just
+		  with different Class members. Class should be solved through the Registry.
+
+		Only GateClasses should instantiate Gates, using the CreateGate function.
 ]]
 
 -- Requires and Services
 local ServerScriptService = game:GetService("ServerScriptService")
+
 local SignalService = require(ServerScriptService.Gates.Services.SignalService)
 local AttributeService = require(ServerScriptService.Gates.Services.AttributeService)
 
--- Types
-local Types = require(ServerScriptService.Gates.Definitions.Types)
-export type TGate = Types.TGate
-export type TNode = Types.TNode
-export type TSignal = Types.TSignal
+local Node = require(ServerScriptService.Gates.Definitions.Node)
+local GateModel = require(ServerScriptService.Gates.Definitions.GateModel)
 
-local Gate = {}
+-- ----------------------------- ---------- TYPE DEFINITIONS ----------- -----------------------------
 
-function Gate.getBooleanInput(node: TNode): boolean
-	for outGate in pairs(node) do
-		if SignalService.toBoolean(outGate.Output) then return true end
-	end
-	return false
-end
+export type TGate = {
+	Id: number,
+	OwnerId: number,
+	Model: GateModel.TGateModel,
 
-function Gate.getNumericInput(node: TNode): number
-	if next(node) == nil then return 0 end
-	local highestValue: number = 0
-
-	for outGate in pairs(node) do
-		local out = SignalService.toNumber(outGate.Output)
-		if math.abs(out) > math.abs(highestValue) then
-			highestValue = out
-		end
-	end
-
-	return highestValue
-end
-
-function Gate.getStringInput(node: TNode): string
-	return SignalService.toString(Gate.getSignalInput(node))
-end
-
-function Gate.getSignalInput(node: TNode): TSignal
-	if next(node) == nil then return false end
-	local highestValue: TSignal = false
-
-	for outGate in pairs(node) do
-		local out = outGate.Output :: TSignal
-
-		if type(out) == "string" then
-			if type(highestValue) ~= "string" then
-				highestValue = out
-			elseif #out :: string > #highestValue :: string then
-				highestValue = out
-			end
-		else
-			if math.abs(SignalService.toNumber(out)) >= math.abs(SignalService.toNumber(highestValue)) then
-				highestValue = out
-			end
-		end
-	end
-	return highestValue	
-end
-
-function Gate.getAttribute(gate: TGate, attribute: string, node: TNode?): AttributeService.Attribute
-	assert(gate.Class.validAttributes and gate.Class.validAttributes[attribute] and gate.Attributes[attribute])
+	Class: string,
 	
-	if not node or next(node) == nil then return gate.Attributes[attribute] end
+	Output: SignalService.TSignal?,
+	Inputs: Node.TNodes?,
+	Connections: { [number]: { [string] : { existance: true, Wire: number } } }?, -- [GateID]: { [NodeName]: ConnectionInformation } 
 	
-	local attributeType = gate.Class.validAttributes[attribute]
-	local value
-	if attributeType.Type == "string" then
-		value = Gate.getStringInput(node)
-	elseif attributeType.Type == "number" then
-		value = Gate.getNumericInput(node)
-	elseif attributeType.Type == "boolean" then
-		value = Gate.getBooleanInput(node)
-	end
-	
-	return AttributeService.getValid(gate.Attributes[attribute], value :: AttributeService.Attribute, attributeType)
-end
+	Attributes: AttributeService.TAttributeValues
+}
 
-function Gate.setAttribute(gate: TGate, attribute: string, value: AttributeService.Attribute)
-	assert(gate.Class.validAttributes and gate.Class.validAttributes[attribute] and gate.Attributes[attribute])
-	
-	local attributeType = gate.Class.validAttributes[attribute]
-	gate.Attributes[attribute] = AttributeService.getValid(gate.Attributes[attribute], value, attributeType)
-end
+-- ----------------------------- ------------- END OF MODULE ------------- ---------------------------
 
-return Gate
+return true

@@ -15,7 +15,7 @@ type TGate = Types.TGate
 type TNode = Types.TNode
 
 -- Debugger
-local Logger = require(ReplicatedStorage.LoggerService)
+local Logger = require(ReplicatedStorage.Services.LoggerService)
 local log = Logger.new("Wire")
 
 local Wirer = {}

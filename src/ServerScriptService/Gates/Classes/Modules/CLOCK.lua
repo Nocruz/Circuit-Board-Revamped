@@ -36,7 +36,7 @@ ClockClass.validAttributes = {
 }
 
 function ClockClass.new(id: number, ownerId: number, gateModel: Types.TGateModel): TGate
-	local gate = setmetatable(GateClass.new(id, ownerId, gateModel), ClockClass) :: TGate
+	local gate = setmetatable(GateClass.CreateGate(id, ownerId, gateModel), ClockClass) :: TGate
 
 	gate.Class = ClockClass
 	gate.Inputs = { ["Enable"] = {} }
