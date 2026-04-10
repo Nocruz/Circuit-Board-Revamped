@@ -1,11 +1,9 @@
-local LogReporterService = game:GetService("LogReporterService")
---[[ GATE VISUALS SERVICE
+--[[ VISUALS
 		This service manages how the GateModels are instantiated.
 		Decorations described in TGateVisuals come in tables, that this service
 		validates.
 		
 		Configurations are meant to be exchangeable and gate independant (As long as the node amount is the same).
-		For gate dependant stuff, change the Prefab
 ]]
 
 -- ----------------------------- ---------- TYPE DEFINITIONS ----------- ---------------------------

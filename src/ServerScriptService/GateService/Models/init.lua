@@ -38,7 +38,7 @@ export type TVisuals = Visuals.TVisuals
 
 -- ----------------------------- ---------- HELPER FUNCTIONS ---------- ---------------------------
 
-local function GetPart(object: BasePart | Model): BasePart
+local function GetAsPart(object: BasePart | Model): BasePart
   return if object:IsA("BasePart") then object elseif object.PrimaryPart then object.PrimaryPart else error("Object was not a Model or did not have a PrimaryPart set!")
 end
 
@@ -117,7 +117,7 @@ local function InstantiateNode(name: string, nameColor: Color3, material: Enum.M
   
   -- Linear transformation: EdgePosition × Rotation × Offset
   local transformedOffset = CFrame.new(Vector3.new(offset.X * BASE_SIZE.X, 0, offset.Y * BASE_SIZE.Z))
-  node.CFrame = GetPart(model.Base).CFrame * transformedOffset * RotationForEdge[edge] * NODE_DEPTH_OFFSET
+  node.CFrame = GetAsPart(model.Base).CFrame * transformedOffset * RotationForEdge[edge] * NODE_DEPTH_OFFSET
   return edge
 end
 
@@ -162,7 +162,7 @@ function Models.new(Nodes: { Outputs: { string }, Inputs: { string } }, visuals:
     local main = gateModel.Decoration.Main
   
     do
-      local part = GetPart(main)
+      local part = GetAsPart(main)
       part.Color = visuals.MainColor
       part.Material = visuals.MainMaterial
     end
@@ -197,7 +197,7 @@ function Models.new(Nodes: { Outputs: { string }, Inputs: { string } }, visuals:
     if child:IsA("BasePart") and child:GetAttribute("ScaleWithNodes") then
       local newSize, baseRelativeOffset = MakeRoomForNodes(child, edgesWithNode)
       child.Size = newSize
-      child.CFrame += GetPart(gateModel.Base).CFrame:VectorToWorldSpace(baseRelativeOffset)
+      child.CFrame += GetAsPart(gateModel.Base).CFrame:VectorToWorldSpace(baseRelativeOffset)
     end
   end
   
