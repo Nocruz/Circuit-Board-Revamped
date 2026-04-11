@@ -9,8 +9,8 @@ local Workspace = game:GetService("Workspace")
 
 -- local Attributes = require(script.Attributes)
 -- local Updates = require(script.Updates)
--- local Signals = require(script.Signals)
 local Models = require(script.Models)
+local Signals = require(script.Signals)
 local Visuals = require(script.Models.Visuals)
 local Connections = require(script.Connections)
 
@@ -24,7 +24,7 @@ type TGateID = number
 
 type TAttribute = string | number | boolean
 type TAttributeSpecification = nil
-type TSignal = nil
+type TSignal = Signals.TSignal
 type TGateModel = Models.TGateModel
 
 -- ----------------------------- ----------- TYPE DEFINITIONS ------------ ----------------------------
@@ -32,25 +32,30 @@ type TGateModel = Models.TGateModel
 export type TNodeInstance = { [TGateID]: { [TNodeName]: true } }
 
 export type TGateInstance = {
+	Id: number,
 	OwnerId: TPlayerID,
 	Model: TGateModel,
 	
-	Nodes: { Outputs: { [TNodeName]: TNodeInstance }, Inputs: { [TNodeName]: TNodeInstance } },
-	Attributes: { [TAttributeName]: TAttribute },
+	Nodes: { Outputs: { [TNodeName]: TNodeInstance }, Inputs: { [TNodeName]: TNodeInstance }, Signals: { [TNodeName]: TSignal } },
+	Attributes: { [TAttributeName]: TAttribute }
 }
 
-export type TGateSpecification = {
+export type TSpecification = {
+	Name: string,
 	Nodes: { Outputs: { string }, Inputs: { string } },
 	AttributeData: { [TAttributeName]: TAttributeSpecification },
 	DefaultVisuals: Models.TVisuals,
 	
-	Create: (specification: TGateSpecification, owner: TPlayerID, model: TGateModel) -> TGateInstance,
+	Setup: (gate: TGateInstance) -> (),
 	Process: (self: TGateInstance) -> TSignal
 }
+
 
 -- ----------------------------- ----------- MODULE DEFINITION ----------- -----------------------------
 
 local GateService = {}
+local Specifications: { [TSpecificationName]: TSpecification } = {}
+local Instances: { [TGateID]: TGateInstance } = {}
 
 --[[ --------------------------- ------ SPECIFICATIONS DEFINITIONS ------- -----------------------------
 	Specifications can be defined manually following the TGateSpecification signature OR
@@ -60,21 +65,28 @@ local GateService = {}
 	It should also hold a Process key that matches the TGateSpecification.Process signature.
 ]]
 
-local Specifications: { [TSpecificationName]: TGateSpecification } = {}
+local specificationMetatable = { __index = {
+	ReadInput = function(gate, node) return GateService.ReadInput(gate.Id, node) end
+}}
 
-function GateService.GetSpecification(name): TGateSpecification?
+
+function GateService.GetSpecification(name): TSpecification?
 	return Specifications[name]
 end
 
-function GateService.RegisterSpecification(name: TSpecificationName, specification: TGateSpecification)
-	Specifications[name] = specification
+function GateService.RegisterSpecification(name: string, specification: TSpecification)
+	assert(Specifications[name] == nil, "Specification " .. name .. " was already registered")
+	local data = setmetatable(specification, specificationMetatable)
+	data.Name = name
+	data.DefaultVisuals = Visuals.CompleteWithDefaults(data.DefaultVisuals or {}, specification.Name, #data.Nodes.Inputs, #data.Nodes.Outputs)
+	Specifications[name] = data
 end
 
-local specificationsFolder: Folder = script.Specifications
-for _, specification in ipairs(specificationsFolder:GetChildren()) do
-	local data = require(specification)
-	data.DefaultVisuals = Visuals.CompleteWithDefaults(data.DefaultVisuals, specification.Name, #data.Nodes.Inputs, #data.Nodes.Outputs)
-	GateService.RegisterSpecification(specification.Name, data)
+local function LoadSpecifications() 
+	local specificationsFolder: Folder = script.Specifications
+	for _, specification in ipairs(specificationsFolder:GetChildren()) do
+		GateService.RegisterSpecification(specification.Name, require(specification))
+	end
 end
 
 --[[ --------------------------- ------ GATE INSTANCE DEFINITIONS ------- -----------------------------
@@ -86,8 +98,7 @@ end
 	gates if there are no Gates). However, Gates are responsible for their own destruction and connections.
 ]]
 
-local nextID: TGateID = 0
-local Instances: { [TGateID]: TGateInstance } = {}
+local nextId: TGateID = 0
 
 local gatesFolder = Workspace.Gates
 local playerFolders = {} -- Not weak table because Workspace will always have the folder registered
@@ -119,16 +130,32 @@ function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecifica
 	setmetatable(visuals, { __index = specification.DefaultVisuals} )
 	
 	local model: Model = Models.new(specification.Nodes, visuals)
-	model:PivotTo(cframe)
-	model:SetAttribute("GateId", nextID)
-	model.Name = specificationName
-	model.Parent = getPlayerFolder(owner)
+	do
+		model:PivotTo(cframe)
+		model:SetAttribute("GateId", nextId)
+		model.Name = specificationName
+		model.Parent = getPlayerFolder(owner)
+	end
 	
-	local gate = specification:Create(owner, model) -- Sets metatable to it's specification
-	Instances[nextID] = gate
+	local gate = {}
+	do	
+		gate.Id = nextId
+		gate.OwnerId = owner
+		gate.Model = model
+		gate.Nodes = { Outputs = {}, Inputs = {}, Signals = {} }
+		gate.Attributes = {}
+		for _, output in ipairs(specification.Nodes.Outputs) do gate.Nodes.Outputs[output] = { }; gate.Nodes.Signals[output] = false end
+		for _, input in ipairs(specification.Nodes.Inputs) do gate.Nodes.Inputs[input] = { } end
+		setmetatable(gate, { __index = specification } )
+	end
 	
-	nextID = nextID + 1
-	return nextID - 1
+	if specification.Setup then specification.Setup(gate) end
+	
+	Instances[nextId] = gate
+	nextId = nextId + 1
+
+	specification.Process(gate)
+	return nextId - 1
 end
 
 function GateService.Move(gateID: TGateID, to: CFrame)
@@ -172,8 +199,10 @@ function GateService.Connect(fromID: TGateID, toID: TGateID, Nodes: { from: TNod
 	toNode[fromID] = toNode[fromID] or {}; toNode[fromID][Nodes.from] = true
 	
 	local wire = Connections.new(fromGate.Model.Nodes[Nodes.from], toGate.Model.Nodes[Nodes.to])
-	wire.Parent = fromGate.Model.Nodes[Nodes.from]
+	Connections.UpdateCFrame(wire)
+	Connections.UpdateColor(wire, fromGate.Nodes.Signals[Nodes.from])
 	wire.Name = toID .. "-" .. Nodes.to
+	wire.Parent = fromGate.Model.Nodes[Nodes.from]
 end
 
 function GateService.Disconnect(fromID: TGateID, toID: TGateID, Nodes: { from: TNodeName, to: TNodeName } )
@@ -189,7 +218,9 @@ function GateService.Disconnect(fromID: TGateID, toID: TGateID, Nodes: { from: T
 	
 	fromNode[toID][Nodes.to] = nil
 	toNode[fromID][Nodes.from] = nil
-	
+	if next(fromNode[toID]) == nil then fromNode[toID] = nil end
+	if next(toNode[fromID]) == nil then toNode[fromID] = nil end
+
 	local wire = fromGate.Model.Nodes[Nodes.from][toID .. "-" .. Nodes.to]
 	wire:Destroy()
 end
@@ -220,6 +251,39 @@ function GateService.Destroy(gateID: TGateID)
 
 	Instances[gateID] = nil
 	gate.Model:Destroy()
+end
+
+-- INPUT READS and WRITES
+
+function GateService.ReadInput(gateID: TGateID, nodeName: TNodeName)
+	local gate = Instances[gateID]
+	assert(gate, "Gate " .. gateID .. " does not exist")
+	
+	local inputNode: TNodeInstance = gate.Nodes.Inputs[nodeName]
+	assert(inputNode, "Gate " .. gateID .. " has no node " .. nodeName)
+
+	local signals = {}
+	for fromGateID, outputs in pairs(inputNode) do
+		local fromGate = Instances[fromGateID]
+		assert(fromGate, "Gate " .. fromGateID .. " does not exist, but is registered as input of gate " .. gateID)
+		for outputNode in pairs(outputs) do
+			assert(fromGate.Nodes.Outputs[outputNode], "Gate " .. fromGateID .. " is connected to " .. gateID .. " from '" .. outputNode .. "' output node, but it doesnt exist")
+			assert(fromGate.Nodes.Signals[outputNode] ~= nil, "Gate " .. fromGateID .. " is missing '" .. outputNode .. "' output node key in Signals table")
+			table.insert(signals, fromGate.Nodes.Signals[outputNode])
+		end
+	end
+	
+	local raw = Signals.Collapse(signals)
+	return {
+		Raw = raw,
+		AsString = function() return Signals.toString(raw) end,
+		AsNumber = function() return Signals.toNumber(raw) end,
+		AsBoolean = function() return Signals.toBoolean(raw) end
+	}
+end
+
+function GateService.ForceProcess(gateID: TGateID)
+	Instances[gateID]:Process()
 end
 
 --[[ --------------------------- -------------- DEBUGGING --------------- -----------------------------]]
@@ -332,6 +396,10 @@ function GateService.VisualizeSignal(startID: TGateID, maxSteps: number?)
 	
 	print("================================")
 end
+
+-- ----------------------------- ---------- LOAD SPECIFICATIONS ---------- -----------------------------
+
+LoadSpecifications()
 
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
 

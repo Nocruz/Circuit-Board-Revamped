@@ -3,10 +3,18 @@
 		Handles connections between gates
 ]]
 
+-- Requires
+local Signals = require(script.Parent.Signals)
+
+-- API
 local Connections = {}
 
 -- Prefab
 local WirePrefab: TWire = script.Wire
+
+-- Constants
+local COLOR_ON = Color3.new(0.9, 0.9, 1)
+local COLOR_OFF = Color3.new(0, 0, 0.1)
 
 -- ----------------------------- ----------- TYPE DEFINITIONS ------------ ----------------------------
 
@@ -32,14 +40,20 @@ function Connections.new(fromNode: BasePart, toNode: BasePart): TWire
 	local wire: TWire  = WirePrefab:Clone()
 	wire.Attachment0 = fromAttachment
 	wire.Attachment1 = toAttachment
-	wire.Hitbox.Size, wire.Hitbox.CFrame = GetHitboxTraslation(fromAttachment, toAttachment)
 	
 	return wire
 end
 
+-- ----------------------------- ---------------- MODEL ------------------ ----------------------------
+
 function Connections.UpdateCFrame(wire: TWire)
 	assert(wire.Attachment0 and wire.Attachment1, "Invalid wire instance")
 	wire.Hitbox.Size, wire.Hitbox.CFrame = GetHitboxTraslation(wire.Attachment0, wire.Attachment1)
+end
+
+function Connections.UpdateColor(wire: TWire, signal: Signals.TSignal)
+	local on_off = Signals.toBoolean(signal)
+	wire.Color = ColorSequence.new(if on_off then COLOR_ON else COLOR_OFF)
 end
 
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
