@@ -109,7 +109,7 @@ local function getPlayerFolder(owner: TPlayerID)
 	end
 end
 
-function GateService.InstantiateGate(owner: TPlayerID, specificationName: TSpecificationName, cframe: CFrame, visuals): TGateID
+function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecificationName, cframe: CFrame, visuals): TGateID
 	-- print("Instantiating " .. specificationName .. " with ID " .. nextID .. " at " .. tostring(cframe) .. " for " .. owner)
 	
 	local specification = Specifications[specificationName]
@@ -129,6 +129,31 @@ function GateService.InstantiateGate(owner: TPlayerID, specificationName: TSpeci
 	
 	nextID = nextID + 1
 	return nextID - 1
+end
+
+function GateService.Move(gateID: TGateID, to: CFrame)
+	local gate = Instances[gateID]
+	assert(gate, "Gate " .. gateID .. " does not exist")
+	
+	gate.Model:PivotTo(to)
+	
+	-- Move all in connections
+	for inputName, nodeInstance in pairs(gate.Nodes.Inputs) do
+		for fromGateID, outputs in pairs(nodeInstance) do
+			for outputName in pairs(outputs) do
+				Connections.UpdateCFrame((Instances[fromGateID].Model.Nodes[outputName] :: any)[gateID .. "-" .. inputName])
+			end
+		end
+	end
+	
+	-- Move all out connections
+	for outputName, nodeInstance in pairs(gate.Nodes.Outputs) do
+		for toGateID, inputs in pairs(nodeInstance) do
+			for inputName in pairs(inputs) do
+				Connections.UpdateCFrame((Instances[gateID].Model.Nodes[outputName] :: any)[toGateID .. "-" .. inputName])
+			end
+		end
+	end
 end
 
 -- Self connections are allowed!
@@ -182,7 +207,7 @@ function GateService.Destroy(gateID: TGateID)
 			nodeInstance[toGateID] = nil
 		end
 	end
-
+	
 	-- Disconnect all in connections
 	for inputName, nodeInstance in pairs(gate.Nodes.Inputs) do
 		for fromGateID, outputs in pairs(nodeInstance) do
@@ -201,17 +226,17 @@ end
 
 function GateService.VisualizeSignal(startID: TGateID, maxSteps: number?)
 	maxSteps = maxSteps or 10
-
+	
 	local startGate = Instances[startID]
 	assert(startGate, "Gate " .. startID .. " does not exist")
-
+	
 	print("========== SIGNAL TREE ==========")
-
+	
 	-- ===== helpers =====
-
+	
 	local function getInputs(targetId)
 		local list = {}
-
+		
 		for gateId, gate in pairs(Instances) do
 			for outputName, connections in pairs(gate.Nodes.Outputs) do
 				for tId, nodeMap in pairs(connections) do
@@ -226,13 +251,13 @@ function GateService.VisualizeSignal(startID: TGateID, maxSteps: number?)
 				end
 			end
 		end
-
+		
 		return list
 	end
-
+	
 	local function getOutputs(gate)
 		local list = {}
-
+		
 		for outputName, connections in pairs(gate.Nodes.Outputs) do
 			for targetGateId, nodeMap in pairs(connections) do
 				for toNodeName in pairs(nodeMap) do
@@ -243,55 +268,55 @@ function GateService.VisualizeSignal(startID: TGateID, maxSteps: number?)
 				end
 			end
 		end
-
+		
 		return list
 	end
-
+	
 	-- ===== PASS 1: DIRECT INPUTS =====
-
+	
 	local inputs = getInputs(startID)
-
+	
 	if #inputs > 0 then
 		print("INCOMING")
 		for _, conn in ipairs(inputs) do
 			print(" | Gate " .. conn.id .. " (" .. conn.label .. ")")
 		end
 	end
-
+	
 	-- ===== PASS 2: OUTPUT TREE =====
-
+	
 	local visited = {}
-
+	
 	local function traverse(gateId, prefix, isLast, depth, label)
 		if depth > maxSteps then return end
-
+		
 		local gate = Instances[gateId]
 		if not gate then return end
-
+		
 		local connector = depth > 0 and (isLast and "└── " or "├── ") or ""
-
+		
 		-- cycle detection
 		if visited[gateId] then
 			print(prefix .. connector .. "↺ Gate " .. gateId)
 			return
 		end
-
+		
 		visited[gateId] = true
-
+		
 		if label then
 			print(prefix .. connector .. "Gate " .. gateId .. " (" .. label .. ")")
 		else
 			print(prefix .. "Gate " .. gateId)
 		end
-
+		
 		local outputs = getOutputs(gate)
-
+		
 		for i, conn in ipairs(outputs) do
 			local newPrefix = prefix
 			if depth > 0 then
 				newPrefix = newPrefix .. (isLast and "    " or "│   ")
 			end
-
+			
 			traverse(
 				conn.id,
 				newPrefix,
@@ -301,10 +326,10 @@ function GateService.VisualizeSignal(startID: TGateID, maxSteps: number?)
 			)
 		end
 	end
-
+	
 	-- Root + outputs
 	traverse(startID, "", true, 0, nil)
-
+	
 	print("================================")
 end
 

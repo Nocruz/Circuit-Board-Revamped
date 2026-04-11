@@ -17,7 +17,7 @@ export type TWire = Beam & { Hitbox: BasePart }
 local function GetHitboxTraslation(attachment0: Attachment, attachment1: Attachment): (Vector3, CFrame)
 	local fromPosition = attachment0.WorldPosition
 	local toPosition = attachment1.WorldPosition
-	local length = math.max((toPosition - fromPosition).Magnitude, 0.2)
+	local length = (toPosition - fromPosition).Magnitude
 	
 	return Vector3.new(0.2, 0.2, length), CFrame.lookAt(fromPosition, toPosition) * CFrame.new(0, 0, -length / 2)
 end
@@ -35,6 +35,11 @@ function Connections.new(fromNode: BasePart, toNode: BasePart): TWire
 	wire.Hitbox.Size, wire.Hitbox.CFrame = GetHitboxTraslation(fromAttachment, toAttachment)
 	
 	return wire
+end
+
+function Connections.UpdateCFrame(wire: TWire)
+	assert(wire.Attachment0 and wire.Attachment1, "Invalid wire instance")
+	wire.Hitbox.Size, wire.Hitbox.CFrame = GetHitboxTraslation(wire.Attachment0, wire.Attachment1)
 end
 
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
