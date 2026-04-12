@@ -7,11 +7,11 @@
 -- Requires and services
 local Workspace = game:GetService("Workspace")
 
--- local Attributes = require(script.Attributes)
 -- local Updates = require(script.Updates)
 local Models = require(script.Models)
 local Signals = require(script.Signals)
 local Visuals = require(script.Models.Visuals)
+local Attributes = require(script.Attributes)
 local Connections = require(script.Connections)
 
 -- ----------------------------- -------------- TYPE ALIASES ------------ ----------------------------
@@ -69,7 +69,6 @@ local specificationMetatable = { __index = {
 	ReadInput = function(gate, node) return GateService.ReadInput(gate.Id, node) end
 }}
 
-
 function GateService.GetSpecification(name): TSpecification?
 	return Specifications[name]
 end
@@ -79,6 +78,7 @@ function GateService.RegisterSpecification(name: string, specification: TSpecifi
 	local data = setmetatable(specification, specificationMetatable)
 	data.Name = name
 	data.DefaultVisuals = Visuals.CompleteWithDefaults(data.DefaultVisuals or {}, specification.Name, #data.Nodes.Inputs, #data.Nodes.Outputs)
+	data.AttributeData = specification.AttributeData or { }
 	Specifications[name] = data
 end
 
@@ -101,7 +101,7 @@ end
 local nextId: TGateID = 0
 
 local gatesFolder = Workspace.Gates
-local playerFolders = {} -- Not weak table because Workspace will always have the folder registered
+local playerFolders = setmetatable({}, { __mode = "kv"} )
 local function getPlayerFolder(owner: TPlayerID)
 	local folderName = if owner == 0 then "Server" else tostring(owner)
 	if playerFolders[folderName] then return playerFolders[folderName]
@@ -143,9 +143,10 @@ function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecifica
 		gate.OwnerId = owner
 		gate.Model = model
 		gate.Nodes = { Outputs = {}, Inputs = {}, Signals = {} }
-		gate.Attributes = {}
 		for _, output in ipairs(specification.Nodes.Outputs) do gate.Nodes.Outputs[output] = { }; gate.Nodes.Signals[output] = false end
 		for _, input in ipairs(specification.Nodes.Inputs) do gate.Nodes.Inputs[input] = { } end
+		gate.Attributes = {}
+		for name, specification in pairs(specification.AttributeData) do gate.Attributes[name] = specification.Default end
 		setmetatable(gate, { __index = specification } )
 	end
 	
@@ -283,8 +284,19 @@ function GateService.ReadInput(gateID: TGateID, nodeName: TNodeName)
 end
 
 function GateService.ForceProcess(gateID: TGateID)
-	Instances[gateID]:Process()
+	local gate = Instances[gateID]
+	assert(gate, "Gate " .. gateID .. " does not exist")
+
+	gate:Process()
 end
+
+function GateService.TrySetAttribute(gateID: TGateID, attribute: string, value: string | number | boolean)
+	local gate = Instances[gateID]
+	assert(gate, "Gate " .. gateID .. " does not exist")
+	assert(gate.Attributes[attribute], "Gate " .. gateID .. " has no attribute '" .. attribute .. "'")
+	gate.Attributes[attribute] = Attributes.Get(value, gate.AttributeData[attribute])
+end
+
 
 --[[ --------------------------- -------------- DEBUGGING --------------- -----------------------------]]
 
