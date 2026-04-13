@@ -7,8 +7,8 @@
 -- Requires and services
 local Workspace = game:GetService("Workspace")
 
--- local Updates = require(script.Updates)
 local Models = require(script.Models)
+local Updates = require(script.Updates)
 local Signals = require(script.Signals)
 local Visuals = require(script.Models.Visuals)
 local Attributes = require(script.Attributes)
@@ -120,6 +120,10 @@ local function getPlayerFolder(owner: TPlayerID)
 	end
 end
 
+function GateService.GetGateInstance(gateID: TGateID): TGateInstance?
+	return Instances[gateID]
+end
+
 function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecificationName, cframe: CFrame, visuals): TGateID
 	-- print("Instantiating " .. specificationName .. " with ID " .. nextID .. " at " .. tostring(cframe) .. " for " .. owner)
 	
@@ -201,9 +205,11 @@ function GateService.Connect(fromID: TGateID, toID: TGateID, Nodes: { from: TNod
 	
 	local wire = Connections.new(fromGate.Model.Nodes[Nodes.from], toGate.Model.Nodes[Nodes.to])
 	Connections.UpdateCFrame(wire)
-	Connections.UpdateColor(wire, fromGate.Nodes.Signals[Nodes.from])
+	Updates.QueueWireColorUpdate(wire, fromGate.Nodes.Signals[Nodes.from])
 	wire.Name = toID .. "-" .. Nodes.to
 	wire.Parent = fromGate.Model.Nodes[Nodes.from]
+	
+	Updates.Propagate(toID)
 end
 
 function GateService.Disconnect(fromID: TGateID, toID: TGateID, Nodes: { from: TNodeName, to: TNodeName } )
@@ -224,11 +230,15 @@ function GateService.Disconnect(fromID: TGateID, toID: TGateID, Nodes: { from: T
 
 	local wire = fromGate.Model.Nodes[Nodes.from][toID .. "-" .. Nodes.to]
 	wire:Destroy()
+
+	Updates.Propagate(toID)
 end
 
 function GateService.Destroy(gateID: TGateID)
 	local gate = Instances[gateID]
 	assert(gate, "Gate " .. gateID .. " does not exist")
+
+	Updates.CancelAllOutputs(gateID)
 	
 	-- Disconnect all out connections
 	for outputName, nodeInstance in pairs(gate.Nodes.Outputs) do
@@ -288,13 +298,22 @@ function GateService.ForceProcess(gateID: TGateID)
 	assert(gate, "Gate " .. gateID .. " does not exist")
 
 	gate:Process()
+
+	-- Propagate changes to all downstream gates
+	for outputName, nodeInstance in pairs(gate.Nodes.Outputs) do
+		for downstreamGateID in pairs(nodeInstance) do
+			Updates.Propagate(downstreamGateID)
+		end
+	end
 end
 
 function GateService.TrySetAttribute(gateID: TGateID, attribute: string, value: string | number | boolean)
 	local gate = Instances[gateID]
 	assert(gate, "Gate " .. gateID .. " does not exist")
-	assert(gate.Attributes[attribute], "Gate " .. gateID .. " has no attribute '" .. attribute .. "'")
+	assert(gate.Attributes[attribute] ~= nil, "Gate " .. gateID .. " has no attribute '" .. attribute .. "'")
+	
 	gate.Attributes[attribute] = Attributes.Get(value, gate.AttributeData[attribute])
+	Updates.Propagate(gateID)
 end
 
 
@@ -412,6 +431,7 @@ end
 -- ----------------------------- ---------- LOAD SPECIFICATIONS ---------- -----------------------------
 
 LoadSpecifications()
+Updates.Initialize(Instances)
 
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
 
