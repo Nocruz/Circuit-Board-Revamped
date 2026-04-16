@@ -176,7 +176,7 @@ function GateService.Interact(gateID: TGateID, player: Player)
 	local gate = Instances[gateID]
 	assert(gate, "Gate " .. gateID .. " does not exist")
 	
-	Updates.ScheduleWakeup(gateID, 0, { Source = "Interaction", Player = player } )
+	Updates.Propagate(gateID, { Source = "Interaction", Player = player } )
 end
 
 function GateService.Move(gateID: TGateID, to: CFrame)

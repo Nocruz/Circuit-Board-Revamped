@@ -21,10 +21,12 @@ return {
 
   Process = function(self, payload)
     if payload and payload.Source == "Interaction" and self.Attributes.IsClickable and not self.State.IsOn then
+      print("Button pressed: true")
       self.State.IsOn = true
       Updates.ScheduleWakeup(self.Id, self.Attributes.Duration, { Source = "TimerExpired"}, "Timer" )
 
     elseif payload and payload.Source == "TimerExpired" then
+      print("Button awoke: false")
       self.State.IsOn = false
     end
 
