@@ -26,21 +26,21 @@ local function Activated()
 	local gate = PointerService.HoveredGate
 	if not gate then return end
 
-	local id = gate:GetAttribute("Id")
+	local id = gate:GetAttribute("GateId")
 	if not id then return end
 
-	local allowed, reason, data = GetGateInfo:InvokeServer(id)
+	local allowed, context = GetGateInfo:InvokeServer(id)
 
 	if not allowed then
-		MessageService.SendMessage(reason or "No permissions to configure this gate")
+		MessageService.SendMessage(context or "No permissions to configure this gate")
 		return
 	end
 
-	if data then
-		if next(data) == nil then
+	if context.Data then
+		if next(context.Data) == nil then
 			MessageService.SendMessage("No configuration data available for this gate")
 		else
-			NeedleUI.Open(id, data)
+			NeedleUI.Open(id, context.Data, context.Current)
 		end
 	else
 		MessageService.SendMessage("Failed to fetch gate data")

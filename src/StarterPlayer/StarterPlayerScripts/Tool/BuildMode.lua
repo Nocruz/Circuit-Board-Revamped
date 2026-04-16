@@ -16,7 +16,7 @@ local GridService = require(ReplicatedStorage.Services.GridService)
 
 -- References
 local Terrain = workspace:WaitForChild("Terrain")
-local Baseplate = Terrain.Baseplate
+local Baseplate = Terrain:WaitForChild("Baseplate")
 
 -- Debugging
 local Logger = require(ReplicatedStorage.Services.LoggerService)

@@ -1,4 +1,3 @@
---!strict
 --[[ TWEEZERS
 		This tool uses BuildMode to
 		  request the server to move or destroy a model.
@@ -11,7 +10,6 @@ local LocalServices = StarterPlayerScripts.Services
 
 local PointerService = require(LocalServices.PointerService)
 local MessageService = require(LocalServices.MessageService)
-local GateVisuals = require(ReplicatedStorage.Gates.GateVisuals)
 local BuildMode = require(StarterPlayerScripts.Tool.BuildMode)
 
 -- Events
@@ -43,7 +41,7 @@ local function Activate()
 	if not gate then return end
 
 	parent, pivot = gate.Parent, gate:GetPivot()
-	local result, error = Query:InvokeServer(gate:GetAttribute("Id"), "Move")
+	local result, error = Query:InvokeServer(gate:GetAttribute("GateId"), "Move")
 	if not result then
 		return MessageService.SendMessage(error :: string)
 	end
@@ -57,10 +55,10 @@ local function Deactivate()
 
 	local context = DeactivationContext()
 	if context == "Valid" then
-		MoveEvent:InvokeServer(gate:GetAttribute("Id"), gate:GetPivot())
+		MoveEvent:InvokeServer(gate:GetAttribute("GateId"), gate:GetPivot())
 		gate.Parent = parent
 	elseif context == "Invalid" then
-		DestroyEvent:InvokeServer(gate:GetAttribute("Id"))
+		DestroyEvent:InvokeServer(gate:GetAttribute("GateId"))
 	else -- context == "Skybox"
 		gate:PivotTo(pivot :: CFrame)
 		gate.Parent = parent

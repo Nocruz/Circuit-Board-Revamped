@@ -18,7 +18,10 @@ local log = Logger.new("WireMode")
 
 -- Visuals
 local PointerBallPrefab: Part = ReplicatedStorage.Client.UI.WireMode.PointerBall
-local WirePrefab: Beam = ReplicatedStorage.Wire
+local WirePrefab: Beam = Instance.new("Beam")
+WirePrefab.Color = ColorSequence.new(Color3.fromRGB(20, 20, 20))
+WirePrefab.Width0, WirePrefab.Width1 = 0.2, 0.2
+WirePrefab.FaceCamera = true
 
 -- State
 local pointerBall: Part? = nil

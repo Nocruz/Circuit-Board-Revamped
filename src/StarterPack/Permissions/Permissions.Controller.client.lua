@@ -11,7 +11,7 @@ local Players = game:GetService("Players")
 local MessageService = require(game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts").Services.MessageService)
 
 -- GUI References
-local PermissionsGui = Players.LocalPlayer:WaitForChild("PlayerGui"):WaitForChild("PermissionsGui")
+local PermissionsGui = Players.LocalPlayer:WaitForChild("PlayerGui").OLD:WaitForChild("PermissionsGui")
 local MainFrame = PermissionsGui.MainFrame
 local PlayerListContainer = MainFrame.PlayerListContainer
 local ActionPanelContainer = MainFrame.ActionPanelContainer

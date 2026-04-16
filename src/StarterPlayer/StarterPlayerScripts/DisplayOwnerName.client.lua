@@ -29,8 +29,8 @@ PointerService.OnHoverChanged:Connect(function(instance, gate, node)
 		local adornee = gate:FindFirstChild("Base") or gate:FindFirstChild("Main") or gate.PrimaryPart
 
 		if adornee then
-			local ownerId = gate:GetAttribute("Owner")
-			if ownerId == 0 then return end
+			local ownerId = tonumber(gate.Parent.Name) or 0
+			if ownerId <= 0 then return end
 			
 			displayUI.Adornee = adornee
 			displayUI.Enabled = true

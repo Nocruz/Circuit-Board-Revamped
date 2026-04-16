@@ -96,7 +96,7 @@ end
 -- ----------------------------- --------- NODE INSTANTIATION --------- ---------------------------
 
 -- Instantiates a node.
-local function InstantiateNode(name: string, nameColor: Color3, material: Enum.Material, offset: Vector2, model: TGateModel): TEdge
+local function InstantiateNode(name: string, nameColor: Color3, material: Enum.Material, offset: Vector2, model: TGateModel): (Instance, TEdge)
   local node = NodePrefab:Clone()
   node.Name = name
   node.Material = material
@@ -118,15 +118,19 @@ local function InstantiateNode(name: string, nameColor: Color3, material: Enum.M
   -- Linear transformation: EdgePosition × Rotation × Offset
   local transformedOffset = CFrame.new(Vector3.new(offset.X * BASE_SIZE.X, 0, offset.Y * BASE_SIZE.Z))
   node.CFrame = GetAsPart(model.Base).CFrame * transformedOffset * RotationForEdge[edge] * NODE_DEPTH_OFFSET
-  return edge
+  return node, edge
 end
 
 local function InstantiateOutputNode(name: string, offset: Vector2, model: TGateModel): TEdge
-  return InstantiateNode(name, Color3.new(0.8, 0.1, 0.15), Enum.Material.Neon, offset, model)
+  local node, edge = InstantiateNode(name, Color3.new(0.8, 0.1, 0.15), Enum.Material.Neon, offset, model)
+  node:SetAttribute("Type", "Output")
+  return edge
 end
 
 local function InstantiateInputNode(name: string, offset: Vector2, model: TGateModel): TEdge
-  return InstantiateNode(name, Color3.new(0.1, 0.4, 0.8), Enum.Material.SmoothPlastic, offset, model)
+  local node, edge = InstantiateNode(name, Color3.new(0.1, 0.4, 0.8), Enum.Material.SmoothPlastic, offset, model)
+  node:SetAttribute("Type", "Input")
+  return edge
 end
 
 -- ----------------------------- ----- GATE MODEL INSTANTIATION ----- -----------------------------

@@ -1,69 +1,61 @@
 --!strict
---[[ POINTER SERVICE
-		Handles hover, click, and pointer movement.
-		Also exposes events for when the pointer enters or leaves a gate or node.
-		
-		Should be working for mobile. I will make a console cursor later.
+--[[ POINTER SERVICE (IMPROVED)
+		Handles hover, click, and pointer movement for both desktop and mobile.
+		Automatically filters out all player characters.
 ]]
 
 -- Requires and Services
-local Players          = game:GetService("Players")
-local RunService       = game:GetService("RunService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local Workspace		     = game:GetService("Workspace")
+local Workspace = game:GetService("Workspace")
 
 -- References
-local player = Players.LocalPlayer :: Player
 local camera = Workspace.CurrentCamera :: Camera
 
--- Filter
+-- ----------------------------- ------- CONFIGURATION ----------- ----------------------------
+
+local CONFIG = {
+	MAX_RAY_DISTANCE = 1000,
+	NODE_DETECTION_RADIUS = 5,
+	HOVER_DEBOUNCE_TIME = 0.05,
+	DEBUG_MODE = false,
+}
+
+-- ----------------------------- -------- RAYCAST SETUP --------- ----------------------------
+
 local raycastFilter = Instance.new("Folder")
 raycastFilter.Name = "RaycastFilter"
 raycastFilter.Parent = Workspace
 
--- Raycast
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
-rayParams.FilterDescendantsInstances = { raycastFilter, Workspace:WaitForChild("Characters") }
+rayParams.FilterDescendantsInstances = { raycastFilter }
 
-local MAX_RAY_DISTANCE = 1000
+-- ----------------------------- -------- DEBUG VISUALIZATION ------- ----------------------------
 
--- Events
-local hoverChanged = Instance.new("BindableEvent")
-local gateHovered  = Instance.new("BindableEvent")
-local nodeHovered  = Instance.new("BindableEvent")
-local interacted   = Instance.new("BindableEvent")
-
--- State
-local running  = false
-local renderConnection: RBXScriptConnection? = nil
-
-local lastPointerPos: Vector3? = nil
-local currentResult: RaycastResult? = nil
-
--- Debugging
-local logger = require(game:GetService("ReplicatedStorage").LoggerService)
-local log = logger.new("PointerService")
-
-local DEBUG_BALL = false -- toggle debug visualization
-
-local debugBall: Part?
-if DEBUG_BALL then
+local debugBall: Part
+if CONFIG.DEBUG_MODE then
 	debugBall = Instance.new("Part")
 	debugBall.Shape = Enum.PartType.Ball
-	debugBall.Size = Vector3.new(0.3, 0.3, 0.3) -- adjust size
+	debugBall.Size = Vector3.new(0.3, 0.3, 0.3)
 	debugBall.Anchored = true
 	debugBall.CanCollide = false
 	debugBall.Material = Enum.Material.Neon
-	debugBall.Color = Color3.fromRGB(0, 255, 0) -- bright green
+	debugBall.Color = Color3.fromRGB(0, 255, 0)
 	debugBall.Transparency = 0.5
 	debugBall.Parent = raycastFilter
-
-	-- Ignore raycasts for the ball
 	table.insert(rayParams.FilterDescendantsInstances, debugBall)
 end
 
--- ----------------------------- ------- RECORD DEFINITION -------- ---------------------------
+-- ----------------------------- -------- EVENT SYSTEM --------- ----------------------------
+
+local hoverChanged = Instance.new("BindableEvent")
+local gateHovered = Instance.new("BindableEvent")
+local nodeHovered = Instance.new("BindableEvent")
+local interacted = Instance.new("BindableEvent")
+
+-- ----------------------------- -------- STATE MANAGEMENT --------- ----------------------------
 
 local PointerService = {
 	RaycastFilter = raycastFilter,
@@ -74,120 +66,251 @@ local PointerService = {
 	HitPosition = nil :: Vector3?,
 	
 	OnHoverChanged = hoverChanged.Event,
-	OnGateHovered  = gateHovered.Event,
-	OnNodeHovered  = nodeHovered.Event,
-	OnInteraction  = interacted.Event,
+	OnGateHovered = gateHovered.Event,
+	OnNodeHovered = nodeHovered.Event,
+	OnInteraction = interacted.Event,
 }
 
--- ----------------------------- -------- HELPER METHODS --------- ---------------------------
+local state = {
+	running = false,
+	renderConnection = nil :: RBXScriptConnection?,
+	playerAddedConnection = nil :: RBXScriptConnection?,
+	playerRemovingConnection = nil :: RBXScriptConnection?,
+	characterConnections = {} :: { [Player]: RBXScriptConnection },
+	
+	lastPointerPos = nil :: Vector2?,
+	lastRaycastResult = nil :: RaycastResult?,
+	
+	lastHoveredInstance = nil :: Instance?,
+	lastHoveredGate = nil :: Model?,
+	lastHoveredNode = nil :: BasePart?,
+	
+	lastHoverChangeTime = 0,
+}
 
-local function isGate(model: Model?): boolean
-	-- Check gate models (assume node structure: Model -> BaseGate & (Nodes -> Input1 & Input2 & ... & InputN) & Decoration -> Main)
-	if not model then return false end
+-- ----------------------------- ------- CHARACTER FILTERING ------- ----------------------------
+
+--[[ 
+	IsInstancePartOfCharacter(instance: Instance): boolean
+	
+	Checks if an instance belongs to any player's character.
+	Returns true if instance is a descendant of a character model.
+]]
+local function IsInstancePartOfCharacter(instance: Instance): boolean
+	for _, playerObj in ipairs(Players:GetPlayers()) do
+		if playerObj.Character and instance:IsDescendantOf(playerObj.Character) then
+			return true
+		end
+	end
+	return false
+end
+
+--[[ 
+	OnPlayerAdded(newPlayer: Player): void
+	
+	Sets up character change tracking for new player.
+]]
+local function OnPlayerAdded(newPlayer: Player)
+	-- Disconnect old connection if exists
+	if state.characterConnections[newPlayer] then
+		state.characterConnections[newPlayer]:Disconnect()
+	end
+	
+	-- Connect to character additions
+	state.characterConnections[newPlayer] = newPlayer.CharacterAdded:Connect(function(char)
+		-- When a character is added, update the raycast filter list
+		-- (The filter will check membership on each raycast)
+	end)
+end
+
+--[[ 
+	OnPlayerRemoving(removingPlayer: Player): void
+	
+	Cleans up connections when player leaves.
+]]
+local function OnPlayerRemoving(removingPlayer: Player)
+	if state.characterConnections[removingPlayer] then
+		state.characterConnections[removingPlayer]:Disconnect()
+		state.characterConnections[removingPlayer] = nil
+	end
+end
+
+-- ----------------------------- ---------- GATE HELPERS ---------- ----------------------------
+
+--[[ 
+	IsGate(model: Model?): boolean
+]]
+local function IsGate(model: Model?): boolean
+	if not model or not model:IsA("Model") then
+		return false
+	end
+	
 	return model:FindFirstChild("Decoration") ~= nil
 		and model:FindFirstChild("Base") ~= nil
 		and model:FindFirstChild("Nodes") ~= nil
 end
 
-local function findGateFromInstance(instance: Instance?): Model?
-	if not instance then return nil end
+--[[ 
+	FindGateFromInstance(instance: Instance?): Model?
+]]
+local function FindGateFromInstance(instance: Instance?): Model?
+	if not instance then
+		return nil
+	end
 	
-	local model = instance:FindFirstAncestorWhichIsA("Model")
-	return if isGate(model) then model else nil
+	if instance:IsA("Model") and IsGate(instance) then
+		return instance
+	end
+	
+	local parent = instance.Parent
+	while parent and parent ~= Workspace do
+		if parent:IsA("Model") and IsGate(parent) then
+			return parent
+		end
+		parent = parent.Parent
+	end
+	
+	return nil
 end
 
-local function findClosestNodeFromGate(gate: Model?, hitPos: Vector3?): BasePart?
-	if not gate or not isGate(gate) or not hitPos then return nil end
+--[[ 
+	FindClosestNodeFromGate(gate: Model?, hitPos: Vector3?): BasePart?
+]]
+local function FindClosestNodeFromGate(gate: Model?, hitPos: Vector3?): BasePart?
+	if not gate or not IsGate(gate) or not hitPos then
+		return nil
+	end
 	
-	local nodes = gate:FindFirstChild("Nodes")
-	if not nodes then return nil end
+	local nodesFolder = gate:FindFirstChild("Nodes")
+	if not nodesFolder then
+		return nil
+	end
 	
-	local closest, dist = nil, math.huge
-	for _, node in nodes:GetChildren() do
-		if not node:IsA("BasePart") then continue end
-		if not node:GetAttribute("Type") then continue end
-
-		local d = (hitPos - node.Position).Magnitude
-		if d < dist then
-			closest, dist = node, d
+	local closestNode = nil
+	local closestDistance = CONFIG.NODE_DETECTION_RADIUS
+	
+	for _, child in ipairs(nodesFolder:GetChildren()) do
+		if not child:IsA("BasePart") then
+			continue
+		end
+		
+		if not child:GetAttribute("Type") then
+			continue
+		end
+		
+		local distance = (hitPos - child.Position).Magnitude
+		if distance < closestDistance then
+			closestNode = child
+			closestDistance = distance
 		end
 	end
-
-	return closest
+	
+	return closestNode
 end
 
--- ----------------------------- -------- UPDATE RAYCAST --------- ------------------------------
+-- ----------------------------- --------- RAYCAST UPDATE --------- ----------------------------
 
-local function updateRaycast()
-	if not lastPointerPos or not running then return end
-	
-	local ray = camera:ScreenPointToRay(lastPointerPos.X, lastPointerPos.Y)
-	currentResult = Workspace:Raycast(ray.Origin, ray.Direction * MAX_RAY_DISTANCE, rayParams)
-	
-	local instance = (currentResult and currentResult.Instance) or nil
-	local hitPos = (currentResult and currentResult.Position) or nil
-	
-	PointerService.HitPosition = hitPos
-	
-	-- Move debug ball to hit position
-	if DEBUG_BALL and debugBall then
-		if currentResult and currentResult.Position then
-			debugBall.Position = currentResult.Position
-			debugBall.Transparency = 0.5
-		else
-			-- Hide it when nothing is hit
-			debugBall.Transparency = 1
-		end
-	end
-
-	-- If part changed
-	if instance ~= PointerService.HoveredInstance then
-		log.info("Pointing to " .. tostring(PointerService.HitPosition or "nothing"))
-		PointerService.HoveredInstance = instance
-		
-		local gate = findGateFromInstance(instance)
-		local node = findClosestNodeFromGate(gate, hitPos)
-		
-		if gate ~= PointerService.HoveredGate then
-			PointerService.HoveredGate = gate
-			log.info("Changed hovered gate to: " .. (gate and gate.Name or "nil"))
-			if gate then gateHovered:Fire(gate) end
-		end
-		
-		if node ~= PointerService.HoveredNode then
-			PointerService.HoveredNode = node
-			log.info("Changed hovered node to: " .. (node and node.Name or "nil"))
-			if node then nodeHovered:Fire(node) end
-		end
-		
-		hoverChanged:Fire(instance, gate, node)
+--[[ 
+	UpdateRaycast(): void
+]]
+local function UpdateRaycast()
+	if not state.lastPointerPos or not state.running then
 		return
 	end
 	
-	-- If position changed, check for closest node change
-	if PointerService.HoveredGate then
-		local node = findClosestNodeFromGate(PointerService.HoveredGate, hitPos)
-		if node ~= PointerService.HoveredNode then
-			PointerService.HoveredNode = node
-			log.info("Changed hovered node to: " .. (node and node.Name or "nil"))
-			if node then nodeHovered:Fire(node) end
+	local ray = camera:ScreenPointToRay(state.lastPointerPos.X, state.lastPointerPos.Y)
+	state.lastRaycastResult = Workspace:Raycast(ray.Origin, ray.Direction * CONFIG.MAX_RAY_DISTANCE, rayParams)
+	
+	local hitInstance = (state.lastRaycastResult and state.lastRaycastResult.Instance) or nil
+	local hitPosition = (state.lastRaycastResult and state.lastRaycastResult.Position) or nil
+	
+	PointerService.HitPosition = hitPosition
+	
+	-- Filter out hits that are part of characters
+	if hitInstance and IsInstancePartOfCharacter(hitInstance) then
+		hitInstance = nil
+		hitPosition = nil
+		PointerService.HitPosition = nil
+	end
+	
+	-- Update debug visualization
+	if CONFIG.DEBUG_MODE and debugBall then
+		if hitPosition then
+			debugBall.Position = hitPosition
+			debugBall.Transparency = 0.5
+		else
+			debugBall.Transparency = 1
 		end
 	end
 	
-end
-	
--- ----------------------------- -------- INPUT HANDLING --------- ---------------------------
-
-UserInputService.InputChanged:Connect(function(input) 
-	if input.UserInputType == Enum.UserInputType.MouseMovement then
-		lastPointerPos = input.Position
-	elseif input.UserInputType == Enum.UserInputType.Touch then
-		lastPointerPos = input.Position
+	-- Debounce
+	local now = tick()
+	local timeSinceLastChange = now - state.lastHoverChangeTime
+	if timeSinceLastChange < CONFIG.HOVER_DEBOUNCE_TIME then
+		return
 	end
-end)
+	
+	-- Check if instance changed
+	if hitInstance ~= state.lastHoveredInstance then
+		state.lastHoveredInstance = hitInstance
+		state.lastHoverChangeTime = now
+		
+		PointerService.HoveredInstance = hitInstance
+		
+		local newGate = FindGateFromInstance(hitInstance)
+		local newNode = FindClosestNodeFromGate(newGate, hitPosition)
+		
+		if newGate ~= state.lastHoveredGate then
+			state.lastHoveredGate = newGate
+			PointerService.HoveredGate = newGate
+			if newGate then
+				gateHovered:Fire(newGate)
+			end
+		end
+		
+		if newNode ~= state.lastHoveredNode then
+			state.lastHoveredNode = newNode
+			PointerService.HoveredNode = newNode
+			if newNode then
+				nodeHovered:Fire(newNode)
+			end
+		end
+		
+		hoverChanged:Fire(hitInstance, newGate, newNode)
+		return
+	end
+	
+	-- Check if node changed
+	if PointerService.HoveredGate and hitPosition then
+		local newNode = FindClosestNodeFromGate(PointerService.HoveredGate, hitPosition)
+		if newNode ~= state.lastHoveredNode then
+			state.lastHoveredNode = newNode
+			state.lastHoverChangeTime = now
+			
+			PointerService.HoveredNode = newNode
+			if newNode then
+				nodeHovered:Fire(newNode)
+			end
+			
+			hoverChanged:Fire(hitInstance, PointerService.HoveredGate, newNode)
+		end
+	end
+end
 
-UserInputService.InputBegan:Connect(function(input, gp)
-	if gp then return end
+-- ----------------------------- --------- INPUT HANDLING --------- ----------------------------
+
+local function OnInputChanged(input: InputObject)
+	if input.UserInputType == Enum.UserInputType.MouseMovement then
+		state.lastPointerPos = input.Position
+	elseif input.UserInputType == Enum.UserInputType.Touch then
+		state.lastPointerPos = input.Position
+	end
+end
+
+local function OnInputBegan(input: InputObject, gp: boolean)
+	if gp then
+		return
+	end
 	
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		interacted:Fire(
@@ -196,29 +319,71 @@ UserInputService.InputBegan:Connect(function(input, gp)
 			PointerService.HoveredNode
 		)
 	end
-end)
+end
 
--- ----------------------------- ---------- LIFECYCLE  ----------- -------------------------------
+-- ----------------------------- ---------- PUBLIC API ---------- ----------------------------
 
 function PointerService.Start()
-	if running then return end
-	running = true
+	if state.running then
+		return
+	end
 	
-	renderConnection = RunService.RenderStepped:Connect(updateRaycast)
+	state.running = true
+	
+	-- Setup player tracking
+	state.playerAddedConnection = Players.PlayerAdded:Connect(OnPlayerAdded)
+	state.playerRemovingConnection = Players.PlayerRemoving:Connect(OnPlayerRemoving)
+	
+	-- Filter existing players
+	for _, playerObj in ipairs(Players:GetPlayers()) do
+		OnPlayerAdded(playerObj)
+	end
+	
+	-- Start raycasting
+	state.renderConnection = RunService.RenderStepped:Connect(UpdateRaycast)
+	
+	-- Setup input
+	UserInputService.InputChanged:Connect(OnInputChanged)
+	UserInputService.InputBegan:Connect(OnInputBegan)
 end
 
 function PointerService.Stop()
-	if not running then return end
-	running = false
-	
-	if renderConnection then
-		renderConnection:Disconnect()
-		renderConnection = nil
+	if not state.running then
+		return
 	end
+	
+	state.running = false
+	
+	if state.renderConnection then
+		state.renderConnection:Disconnect()
+		state.renderConnection = nil
+	end
+	
+	if state.playerAddedConnection then
+		state.playerAddedConnection:Disconnect()
+		state.playerAddedConnection = nil
+	end
+	
+	if state.playerRemovingConnection then
+		state.playerRemovingConnection:Disconnect()
+		state.playerRemovingConnection = nil
+	end
+	
+	for _, conn in pairs(state.characterConnections) do
+		conn:Disconnect()
+	end
+	table.clear(state.characterConnections)
+	
+	PointerService.HoveredInstance = nil
+	PointerService.HoveredGate = nil
+	PointerService.HoveredNode = nil
+	PointerService.HitPosition = nil
 end
+
+-- ----------------------------- ---------- INITIALIZATION ---------- ----------------------------
 
 PointerService.Start()
 
--- ----------------------------- --------- END OF MODULE ---------- -------------------------------
+-- ----------------------------- --------- END OF MODULE ---------- ----------------------------
 
 return PointerService

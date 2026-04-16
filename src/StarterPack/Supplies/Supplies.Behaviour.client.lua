@@ -1,7 +1,6 @@
---!strict
 --[[ SUPPLIES
-		This tool uses BuildMode to
-		  request the server to spawn a model.
+	This tool uses BuildMode to
+	request the server to spawn a model.
 ]]
 
 -- Requires and services
@@ -11,7 +10,6 @@ local LocalServices = StarterPlayerScripts.Services
 
 local PointerService = require(LocalServices.PointerService)
 local MessageService = require(LocalServices.MessageService)
-local GateVisuals = require(ReplicatedStorage.Gates.GateVisuals)
 local BuildMode = require(StarterPlayerScripts.Tool.BuildMode)
 
 -- Events
@@ -36,13 +34,14 @@ end
 local function Activate()
 	local gate = PointerService.HoveredGate
 	if not gate then return end
-
-	local result, error = Query:InvokeServer(gate:GetAttribute("Id"), "Spawn")
+	
+	local result, error = Query:InvokeServer(gate:GetAttribute("GateId"), "Spawn")
 	if not result then
 		return MessageService.SendMessage(error :: string)
 	end
 
-	BuildMode.Activate(gate:Clone())
+	local ghost = gate:Clone()
+	BuildMode.Activate(ghost)
 end
 
 local function Deactivate()
@@ -51,8 +50,7 @@ local function Deactivate()
 	
 	local context = DeactivationContext()
 	if context == "Valid" then
-		local visuals = table.clone(GateVisuals.getVisualsFromName(gate.Name))
-		SpawnEvent:InvokeServer(gate:GetAttribute("Id"), gate:GetPivot(), visuals)
+		SpawnEvent:InvokeServer(gate:GetAttribute("GateId"), gate:GetPivot(), {})
 	end	
 
 	gate:Destroy()

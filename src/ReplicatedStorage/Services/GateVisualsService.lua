@@ -122,6 +122,10 @@ local registry: { [string]: TGateVisuals } = {}
 
 local GateVisualsService = {}
 
+function GateVisualsService.validateVisuals()
+	return true
+end
+
 GateVisualsService.Get = function (key: string): TGateVisuals?
 	local config = getConfigFromName(key)
 	if not config then return nil end

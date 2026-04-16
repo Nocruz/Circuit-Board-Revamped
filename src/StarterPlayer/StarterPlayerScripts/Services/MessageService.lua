@@ -4,7 +4,7 @@ local TweenService = game:GetService("TweenService")
 local PlayerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 
 -- Ensure these names match your UI hierarchy
-local screenGui = PlayerGui:WaitForChild("MessageGui")
+local screenGui = PlayerGui:WaitForChild("OLD"):WaitForChild("MessageGui")
 local container = screenGui:WaitForChild("Container")
 
 function MessageService.SendMessage(text)

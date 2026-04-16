@@ -1,9 +1,8 @@
---!strict
 --[[ WIRE CONTROLLER
-		This manages the state machine:
-			- Transitions
-			- Connections to the PointerContext
-		Check WireMode for information on the state machine.
+	This manages the state machine:
+		- Transitions
+		- Connections to the PointerContext
+	Check WireMode for information on the state machine.
 ]]
 
 -- Requires and services
@@ -32,7 +31,7 @@ local function Activate()
 	local gate, node = PointerService.HoveredGate, PointerService.HoveredNode
 	if not gate or not node then return end
 
-	local result, error = Query:InvokeServer(gate:GetAttribute("Id"), "Wire")
+	local result, error = Query:InvokeServer(gate:GetAttribute("GateId"), "Wire")
 	if not result then
 		return MessageService.SendMessage(error :: string)
 	end
@@ -47,7 +46,7 @@ local function Deactivate()
 	local gate, endNode = PointerService.HoveredGate, PointerService.HoveredNode
 	if not gate or not endNode then return end
 	
-	local startNode = startNode :: Instance
+	assert(startGate and startNode)
 	local typeStart = startNode:GetAttribute("Type")
 	
 	if typeStart == endNode:GetAttribute("Type") then
@@ -57,7 +56,7 @@ local function Deactivate()
 			startGate, gate = gate, startGate
 			startNode, endNode = endNode, startNode
 		end
-		local result, error = WireEvent:InvokeServer(startGate:GetAttribute("Id"), gate:GetAttribute("Id"), endNode.Name)
+		local result, error = WireEvent:InvokeServer(startGate:GetAttribute("GateId"), gate:GetAttribute("GateId"), startNode.Name, endNode.Name)
 		if not result then
 			return MessageService.SendMessage(error :: string)
 		end

@@ -1,4 +1,3 @@
---!strict
 --[[ PLIERS
 		This tool to remove all connections of gate
 ]]
@@ -22,7 +21,7 @@ local Tool = script.Parent
 -- ----------------------------- --------- HELPER METHODS -------- ------------------------------
 
 local function isWire(instance: Instance?): (boolean, Beam?)
-	if instance and instance:IsA("Part") and instance.Name == "WireHitbox" then
+	if instance and instance:IsA("Part") and instance.Name == "Hitbox" then
 		local parent = instance.Parent
 		if parent ~= nil and typeof(parent) == "Instance" and parent:IsA("Beam") then
 			return true, parent
@@ -39,11 +38,12 @@ local function Activated()
 	
 	local validWire, wireInstance = isWire(instance)
 	if validWire and wireInstance then
-		local inId = wireInstance:GetAttribute("In")
-		local outId = wireInstance:GetAttribute("Out")
-		local node = wireInstance:GetAttribute("Node")
+		local fromId = wireInstance:GetAttribute("FromGate")
+		local toId = wireInstance:GetAttribute("ToGate")
+		local fromNode = wireInstance:GetAttribute("FromNode")
+		local toNode = wireInstance:GetAttribute("ToNode")
 		
-		local result, error = CutEvent:InvokeServer(inId, outId, node)
+		local result, error = CutEvent:InvokeServer(fromId, toId, fromNode, toNode)
 		if not result then
 			return MessageService.SendMessage(error :: string)
 		end
@@ -52,7 +52,7 @@ local function Activated()
 	
 	local gate = PointerService.HoveredGate
 	if gate then
-		local result, error = DisconnectEvent:InvokeServer(gate:GetAttribute("Id"))
+		local result, error = DisconnectEvent:InvokeServer(gate:GetAttribute("GateId"))
 		if not result then
 			return MessageService.SendMessage(error :: string)
 		end

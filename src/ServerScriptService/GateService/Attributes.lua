@@ -28,7 +28,7 @@ local Attributes = {}
 
 function Attributes.IsValid(attribute: string | number | boolean, specification: TAttributeSpecification<string | number | boolean>): boolean
 	if type(attribute) ~= "string" and type(attribute) ~= "number" and type(attribute) ~= "boolean" then return false end
-	for predicate in ipairs(specification.Predicates) do
+	for i, predicate in ipairs(specification.Predicates) do
 		if not predicate(attribute) then return false end
 	end
 	

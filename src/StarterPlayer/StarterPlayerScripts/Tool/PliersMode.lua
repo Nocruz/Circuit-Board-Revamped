@@ -17,7 +17,7 @@ local log = Logger.new("PliersMode")
 
 -- Visuals
 local HighlightPrefab: SelectionBox = ReplicatedStorage.Client.UI.PliersHighlight
-local COLOR_SELECTED: ColorSequence = ColorSequence.new(Color3.new(1, 0, 0), Color3.new(1, 0, 0))
+local COLOR_SELECTED: ColorSequence = ColorSequence.new(Color3.new(1, 0, 0))
 
 -- State
 local redBox: SelectionBox? = nil
@@ -34,7 +34,7 @@ local PliersMode = { }
 -- ----------------------------- --------- HELPER METHODS -------- ------------------------------
 
 local function isWire(instance: Instance?): (boolean, Beam?)
-	if instance and instance:IsA("Part") and instance.Name == "WireHitbox" then
+	if instance and instance:IsA("Part") and instance.Name == "Hitbox" then
 		local parent = instance.Parent
 		if parent ~= nil and typeof(parent) == "Instance" and parent:IsA("Beam") then
 			return true, parent

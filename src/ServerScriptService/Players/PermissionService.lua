@@ -1,7 +1,6 @@
---!strict
 --[[ PERMISSION SERVICE
-		Handles ownership and interaction rights.
-		Permissions are stored as: [OwnerId] = { [Action] = { [AllowedUserId] = true } }
+	Handles ownership and interaction rights.
+	Permissions are stored as: [OwnerId] = { [Action] = { [AllowedUserId] = true } }
 ]]
 
 -- ----------------------------- ---------- TYPE DEFINITIONS ----------- -----------------------------
@@ -114,5 +113,21 @@ function PermissionService.canPlayerDo(userId: number, ownerId: number, action: 
 end
 	
 -- ----------------------------- ----------- END OF MODULE ------------ -----------------------------
+
+local function OnPlayerAdded(player: Player)
+	-- Register the player in the permission service
+	PermissionService.registerPlayer(player.UserId)
+	print("Registered player " .. player.Name .. " with ID " .. player.UserId)
+end
+game.Players.PlayerAdded:Connect(OnPlayerAdded)
+
+local function OnDisconnect(player: Player, reason: Enum.PlayerExitReason)
+
+	-- Unregister the player in the permission service
+	PermissionService.unregisterPlayer(player.UserId)
+	print("Unregistered player " .. player.Name .. " with ID " .. player.UserId)
+
+end
+game.Players.PlayerRemoving:Connect(OnDisconnect)
 
 return PermissionService

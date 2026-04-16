@@ -2,7 +2,15 @@
 local StarterPlayerScripts = game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
+
+-- Types from your specification
+export type Predicate<T> = (value: T) -> (boolean, string?)
+
+export type TAttributeSpecification<T> = {
+	Default: T,
+	Predicates: { Predicate<T> },
+	AllowedValues: { T }?,
+}
 
 local SetAttributeEvent = ReplicatedStorage.Client.Events:WaitForChild("Configure")
 local MessageService = require(StarterPlayerScripts.Services.MessageService)
@@ -10,42 +18,60 @@ local MessageService = require(StarterPlayerScripts.Services.MessageService)
 local NeedleUI = {}
 
 local activeGui: ScreenGui?
-local currentGateId: number?
+local currentGateId: string? -- Changed to string to match common ID types
 local changesBuffer: { [string]: any } = {}
+local schemaBuffer: { [string]: TAttributeSpecification<any> } = {}
 
 local COLORS = {
-	Bg = Color3.fromRGB(40, 40, 45),
-	Item = Color3.fromRGB(60, 60, 65),
-	Text = Color3.fromRGB(240, 240, 240),
-	Green = Color3.fromRGB(100, 255, 100),
-	Red = Color3.fromRGB(255, 80, 80)
+	Bg = Color3.fromRGB(30, 30, 35),
+	Item = Color3.fromRGB(45, 45, 50),
+	Input = Color3.fromRGB(20, 20, 25),
+	Text = Color3.fromRGB(230, 230, 230),
+	Accent = Color3.fromRGB(0, 170, 255),
+	Error = Color3.fromRGB(255, 80, 80)
 }
 
-local function create(className, props, children)
+-- Helper for clean instance creation
+local function create<T>(className: string, props: { [string]: any }, children: { Instance }?): T
 	local inst = Instance.new(className)
-	for k, v in pairs(props) do inst[k] = v end
-	if children then for _, c in pairs(children) do c.Parent = inst end end
-	return inst
+	for k, v in pairs(props) do (inst :: any)[k] = v end
+	if children then 
+		for _, c in ipairs(children) do c.Parent = inst end 
+	end
+	return inst :: any
 end
 
-function NeedleUI.Open(gateId: number, gateData: any)
-	NeedleUI.Close()
+-- Validation logic using your Predicates
+local function validate(attrName: string, value: any): (boolean, string?)
+	local spec = schemaBuffer[attrName]
+	if not spec then return true end
+	
+	for _, predicate in ipairs(spec.Predicates) do
+		local success, errorMsg = predicate(value)
+		if not success then return false, errorMsg end
+	end
+	return true
+end
+
+function NeedleUI.Open(gateId: string, schema: { [string]: TAttributeSpecification<any> }, currentValues: { [string]: any })
+	NeedleUI.Close() -- Safety cleanup
 
 	currentGateId = gateId
 	changesBuffer = {}
+	schemaBuffer = schema
 
-	local schema = gateData.Schema
-	local values = gateData.Values
+	activeGui = create("ScreenGui", {
+		Name = "NeedleGUI",
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+	})
 
-	-- 1. Main Screen GUI
-	activeGui = Instance.new("ScreenGui")
-	activeGui.Name = "NeedleGUI"
-	activeGui.ResetOnSpawn = false
-	activeGui.Parent = Players.LocalPlayer.PlayerGui
-
+	-- Background Dimmer/Blocker
 	local blocker = create("TextButton", {
 		Size = UDim2.fromScale(1, 1),
-		BackgroundTransparency = 1,
+		BackgroundTransparency = 0.5,
+		BackgroundColor3 = Color3.new(0,0,0),
 		Text = "",
 		Parent = activeGui
 	})
@@ -54,165 +80,164 @@ function NeedleUI.Open(gateId: number, gateData: any)
 	local container = create("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(300, 50),
+		Size = UDim2.fromOffset(350, 40), -- Height adjusts dynamically
 		BackgroundColor3 = COLORS.Bg,
 		BorderSizePixel = 0,
 		Parent = activeGui
 	}, {
-		create("UICorner", { CornerRadius = UDim.new(0, 8) }),
-		create("UIStroke", { Color = COLORS.Item, Thickness = 2 })
+		create("UICorner", { CornerRadius = UDim.new(0, 6) }),
+		create("UIStroke", { Color = COLORS.Item, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border })
 	})
-
-	local topBar = create("Frame", {
-		Size = UDim2.new(1, 0, 0, 30),
-		BackgroundTransparency = 1,
-		Parent = container
-	}, {
-		create("TextLabel", {
-			Text = "Configuring Gate",
-			Font = Enum.Font.GothamBold,
-			TextSize = 14,
-			TextColor3 = COLORS.Text,
-			Size = UDim2.new(1, -30, 1, 0),
-			BackgroundTransparency = 1,
-			Position = UDim2.fromOffset(10, 0),
-			TextXAlignment = Enum.TextXAlignment.Left
-		})
-	})
-
-	local closeBtn = create("TextButton", {
-		Size = UDim2.fromOffset(30, 30),
-		Position = UDim2.new(1, -30, 0, 0),
-		BackgroundTransparency = 1,
-		Text = "P",
-		TextColor3 = COLORS.Red,
-		Font = Enum.Font.GothamBold,
-		Parent = topBar
-	})
-	closeBtn.MouseButton1Click:Connect(NeedleUI.Close)
 
 	local listLayout = create("UIListLayout", {
 		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 5),
+		Padding = UDim.new(0, 8),
 		HorizontalAlignment = Enum.HorizontalAlignment.Center
 	})
-
-	local content = create("Frame", {
-		Position = UDim2.fromOffset(0, 35),
-		Size = UDim2.new(1, 0, 0, 0), -- Auto size
+	
+	local content = create("ScrollingFrame", {
+		Size = UDim2.new(1, 0, 1, -20),
+		Position = UDim2.fromOffset(0, 10),
 		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 4,
 		Parent = container
-	}, { listLayout })
+	}, { 
+		listLayout,
+		create("UIPadding", { PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10) })
+	})
 
-	local totalHeight = 40
+	local rowCount = 0
 
-	for attrName, attrDef in pairs(schema) do
-		local currentValue = values[attrName]
-		if currentValue == nil then currentValue = attrDef.Default end
+	for attrName, spec in pairs(schema) do
+		rowCount += 1
+		local value = currentValues[attrName]
+		if value == nil then value = spec.Default end
 
 		local row = create("Frame", {
-			Size = UDim2.new(0.9, 0, 0, 30),
+			Size = UDim2.new(0.9, 0, 0, 35),
 			BackgroundColor3 = COLORS.Item,
+			LayoutOrder = rowCount,
 			Parent = content
 		}, { create("UICorner", { CornerRadius = UDim.new(0, 4) }) })
 
-		-- Label
 		create("TextLabel", {
 			Text = attrName,
-			Size = UDim2.new(0.5, -5, 1, 0),
+			Size = UDim2.new(0.4, 0, 1, 0),
 			Position = UDim2.fromOffset(10, 0),
 			BackgroundTransparency = 1,
 			TextColor3 = COLORS.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Font = Enum.Font.Gotham,
-			TextSize = 12,
+			Font = Enum.Font.GothamMedium,
+			TextSize = 13,
 			Parent = row
 		})
 
-		-- Input Control
-		local inputArea = create("Frame", {
-			Size = UDim2.new(0.5, -5, 1, -4),
-			Position = UDim2.new(0.5, 0, 0, 2),
+		local inputContainer = create("Frame", {
+			Size = UDim2.new(0.55, -10, 0.8, 0),
+			Position = UDim2.new(1, -5, 0.5, 0),
+			AnchorPoint = Vector2.new(1, 0.5),
 			BackgroundTransparency = 1,
 			Parent = row
 		})
 
-		if attrDef.Type == "boolean" or (attrDef.Allowed and #attrDef.Allowed > 0) then
+		-- TYPE LOGIC: AllowedValues (Cycle) vs Boolean (Toggle) vs Text/Number (Input)
+		if spec.AllowedValues and #spec.AllowedValues > 0 then
 			local btn = create("TextButton", {
 				Size = UDim2.fromScale(1, 1),
-				BackgroundColor3 = COLORS.Bg,
-				TextColor3 = COLORS.Text,
-				Text = tostring(currentValue),
+				BackgroundColor3 = COLORS.Input,
+				TextColor3 = COLORS.Accent,
+				Text = tostring(value),
 				Font = Enum.Font.GothamBold,
-				Parent = inputArea
+				Parent = inputContainer
 			}, { create("UICorner", { CornerRadius = UDim.new(0, 4) }) })
 
 			btn.MouseButton1Click:Connect(function()
-				local newVal
-				if attrDef.Type == "boolean" then
-					newVal = not (changesBuffer[attrName] or currentValue)
-				else
-					-- Cycle logic
-					local current = changesBuffer[attrName] or currentValue
-					local idx = table.find(attrDef.Allowed, current) or 0
-					idx = (idx % #attrDef.Allowed) + 1
-					newVal = attrDef.Allowed[idx]
-				end
+				local current = changesBuffer[attrName] or value
+				local idx = table.find(spec.AllowedValues :: {any}, current) or 0
+				local nextVal = spec.AllowedValues[(idx % #spec.AllowedValues) + 1]
+				
+				changesBuffer[attrName] = nextVal
+				btn.Text = tostring(nextVal)
+			end)
 
-				changesBuffer[attrName] = newVal
-				btn.Text = tostring(newVal)
+		elseif typeof(spec.Default) == "boolean" then
+			local btn = create("TextButton", {
+				Size = UDim2.fromScale(1, 1),
+				BackgroundColor3 = COLORS.Input,
+				TextColor3 = if value then COLORS.Accent else COLORS.Text,
+				Text = if value then "TRUE" else "FALSE",
+				Font = Enum.Font.GothamBold,
+				Parent = inputContainer
+			}, { create("UICorner", { CornerRadius = UDim.new(0, 4) }) })
+
+			btn.MouseButton1Click:Connect(function()
+				local current = if changesBuffer[attrName] ~= nil then changesBuffer[attrName] else value
+				local nextVal = not current
+				changesBuffer[attrName] = nextVal
+				btn.Text = if nextVal then "TRUE" else "FALSE"
+				btn.TextColor3 = if nextVal then COLORS.Accent else COLORS.Text
 			end)
 
 		else
 			local box = create("TextBox", {
 				Size = UDim2.fromScale(1, 1),
-				BackgroundColor3 = COLORS.Bg,
+				BackgroundColor3 = COLORS.Input,
 				TextColor3 = COLORS.Text,
-				Text = tostring(currentValue),
+				Text = tostring(value),
 				Font = Enum.Font.Code,
+				TextSize = 12,
 				ClearTextOnFocus = false,
-				Parent = inputArea
+				Parent = inputContainer
 			}, { create("UICorner", { CornerRadius = UDim.new(0, 4) }) })
 
 			box.FocusLost:Connect(function()
 				local text = box.Text
-				local val = text
-
-				if attrDef.Type == "number" then
-					val = tonumber(text)
-					if not val then 
-						box.Text = tostring(currentValue) -- Revert invalid
-						return 
-					end
+				local castedValue: any = text
+				
+				if typeof(spec.Default) == "number" then
+					castedValue = tonumber(text)
 				end
-				changesBuffer[attrName] = val
+
+				local isValid, errorMsg = validate(attrName, castedValue)
+				if isValid and castedValue ~= nil then
+					changesBuffer[attrName] = castedValue
+					box.TextColor3 = COLORS.Text
+				else
+					box.Text = tostring(value) -- Revert
+					box.TextColor3 = COLORS.Error
+					if errorMsg then MessageService.SendMessage(errorMsg) end
+				end
 			end)
 		end
-
-		totalHeight += 35
 	end
 
-	container.Size = UDim2.fromOffset(300, totalHeight + 10)
+	-- Dynamically resize container based on rows (max height 400)
+	local finalHeight = math.min(450, (rowCount * 43) + 40)
+	container.Size = UDim2.fromOffset(350, finalHeight)
 end
 
 function NeedleUI.Close()
-	if not activeGui then return end
+	if not activeGui or not currentGateId then return end
 
-	if currentGateId and changesBuffer then
-		for attr, val in pairs(changesBuffer) do
-			task.spawn(function()
-				local success, msg = SetAttributeEvent:InvokeServer(currentGateId, attr, val)
-				if not success and msg then
-					MessageService.SendMessage("Error on " .. attr .. ": " .. msg)
-				end
-			end)
-		end
+	-- Apply all changes buffered in the session
+	for attr, val in pairs(changesBuffer) do
+		-- Using task.spawn so one failing remote call doesn't hang the loop
+		task.spawn(function()
+			local success, msg = SetAttributeEvent:InvokeServer(currentGateId, attr, val)
+			if not success and msg then
+				MessageService.SendMessage(`Failed to set {attr}: {msg}`)
+			end
+		end)
 	end
 
 	activeGui:Destroy()
 	activeGui = nil
 	currentGateId = nil
-	changesBuffer = {}
+	table.clear(changesBuffer)
+	table.clear(schemaBuffer)
 end
 
 return NeedleUI

@@ -66,7 +66,8 @@ local Instances: { [TGateID]: TGateInstance } = {}
 ]]
 
 local specificationMetatable = { __index = {
-	ReadInput = function(gate, node) return GateService.ReadInput(gate.Id, node) end
+	ReadInput = function(gate, node) return GateService.ReadInput(gate.Id, node) end,
+	ReadAttribute = function(gate, attribute, node) return GateService.ReadAttribute(gate.Id, attribute, node) end,
 }}
 
 function GateService.GetSpecification(name): TSpecification?
@@ -100,7 +101,13 @@ end
 
 local nextId: TGateID = 0
 
-local gatesFolder = Workspace.Gates
+local gatesFolder = Workspace:FindFirstChild("Gates")
+if not gatesFolder then
+	gatesFolder = Instance.new("Folder")
+	gatesFolder.Name = "Gates"
+	gatesFolder.Parent = Workspace
+end
+
 local playerFolders = setmetatable({}, { __mode = "kv"} )
 local function getPlayerFolder(owner: TPlayerID)
 	local folderName = if owner == 0 then "Server" else tostring(owner)
@@ -153,14 +160,23 @@ function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecifica
 		for name, specification in pairs(specification.AttributeData) do gate.Attributes[name] = specification.Default end
 		setmetatable(gate, { __index = specification } )
 	end
+	Instances[nextId] = gate
 	
 	if specification.Setup then specification.Setup(gate) end
-	
-	Instances[nextId] = gate
-	nextId = nextId + 1
+	Updates.Propagate(nextId)
 
-	specification.Process(gate)
+	-- BOILERPLATE FOR SWITCH AND BUTTON
+	if gate.ClickDetector then gate.ClickDetector.MouseClick:Connect(function(player) GateService.Interact(gate.Id, player) end) end
+	
+	nextId = nextId + 1
 	return nextId - 1
+end
+
+function GateService.Interact(gateID: TGateID, player: Player)
+	local gate = Instances[gateID]
+	assert(gate, "Gate " .. gateID .. " does not exist")
+	
+	Updates.ScheduleWakeup(gateID, 0, { Source = "Interaction", Player = player } )
 end
 
 function GateService.Move(gateID: TGateID, to: CFrame)
@@ -173,7 +189,9 @@ function GateService.Move(gateID: TGateID, to: CFrame)
 	for inputName, nodeInstance in pairs(gate.Nodes.Inputs) do
 		for fromGateID, outputs in pairs(nodeInstance) do
 			for outputName in pairs(outputs) do
-				Connections.UpdateCFrame((Instances[fromGateID].Model.Nodes[outputName] :: any)[gateID .. "-" .. inputName])
+				for _, wire in ipairs(Connections.GetIncoming(gateID, outputName)) do
+					Connections.UpdateCFrame(wire)
+				end
 			end
 		end
 	end
@@ -182,7 +200,9 @@ function GateService.Move(gateID: TGateID, to: CFrame)
 	for outputName, nodeInstance in pairs(gate.Nodes.Outputs) do
 		for toGateID, inputs in pairs(nodeInstance) do
 			for inputName in pairs(inputs) do
-				Connections.UpdateCFrame((Instances[gateID].Model.Nodes[outputName] :: any)[toGateID .. "-" .. inputName])
+				for _, wire in ipairs(Connections.GetOutgoing(gateID, inputName)) do
+					Connections.UpdateCFrame(wire)
+				end
 			end
 		end
 	end
@@ -203,11 +223,9 @@ function GateService.Connect(fromID: TGateID, toID: TGateID, Nodes: { from: TNod
 	fromNode[toID] = fromNode[toID] or {}; fromNode[toID][Nodes.to] = true
 	toNode[fromID] = toNode[fromID] or {}; toNode[fromID][Nodes.from] = true
 	
-	local wire = Connections.new(fromGate.Model.Nodes[Nodes.from], toGate.Model.Nodes[Nodes.to])
+	local wire = Connections.new(fromID, toID, fromGate.Model.Nodes[Nodes.from], toGate.Model.Nodes[Nodes.to])
 	Connections.UpdateCFrame(wire)
 	Updates.QueueWireColorUpdate(wire, fromGate.Nodes.Signals[Nodes.from])
-	wire.Name = toID .. "-" .. Nodes.to
-	wire.Parent = fromGate.Model.Nodes[Nodes.from]
 	
 	Updates.Propagate(toID)
 end
@@ -228,8 +246,14 @@ function GateService.Disconnect(fromID: TGateID, toID: TGateID, Nodes: { from: T
 	if next(fromNode[toID]) == nil then fromNode[toID] = nil end
 	if next(toNode[fromID]) == nil then toNode[fromID] = nil end
 
-	local wire = fromGate.Model.Nodes[Nodes.from][toID .. "-" .. Nodes.to]
-	wire:Destroy()
+	local wires = Connections.GetOutgoing(fromID, Nodes.from)
+	for i = #wires, 1, -1 do
+		local wire = wires[i]
+		local matches = wire:GetAttribute("ToGate") == toID and wire:GetAttribute("ToNode") == Nodes.to
+		if matches then
+			Connections.Destroy(wire)
+		end
+	end
 
 	Updates.Propagate(toID)
 end
@@ -238,7 +262,7 @@ function GateService.Destroy(gateID: TGateID)
 	local gate = Instances[gateID]
 	assert(gate, "Gate " .. gateID .. " does not exist")
 
-	Updates.CancelAllOutputs(gateID)
+	Updates.CancelAllWakeups(gateID)
 	
 	-- Disconnect all out connections
 	for outputName, nodeInstance in pairs(gate.Nodes.Outputs) do
@@ -266,6 +290,42 @@ end
 
 -- INPUT READS and WRITES
 
+function GateService.ReadAttribute(gateID: TGateID, attributeName: TAttributeName, nodeName: TNodeName?): (boolean, any)
+	local gate = Instances[gateID]
+	assert(gate, "Gate " .. gateID .. " does not exist")
+
+	local attribute = gate.Attributes[attributeName]
+	assert(attribute, "Gate " .. gateID .. " has no attribute " .. attributeName)
+
+	if nodeName then
+		local inputNode: TNodeInstance = gate.Nodes.Inputs[nodeName]
+		assert(inputNode, "Gate " .. gateID .. " has no node " .. nodeName)
+
+		local signals = {}
+		for fromGateID, outputs in pairs(inputNode) do
+			local fromGate = Instances[fromGateID]
+			assert(fromGate, "Gate " .. fromGateID .. " does not exist, but is registered as input of gate " .. gateID)
+			for outputNode in pairs(outputs) do
+				assert(fromGate.Nodes.Outputs[outputNode], "Gate " .. fromGateID .. " is connected to " .. gateID .. " from '" .. outputNode .. "' output node, but it doesnt exist")
+				assert(fromGate.Nodes.Signals[outputNode] ~= nil, "Gate " .. fromGateID .. " is missing '" .. outputNode .. "' output node key in Signals table")
+				table.insert(signals, fromGate.Nodes.Signals[outputNode])
+			end
+		end
+
+		if next(signals) == nil then return false, attribute end
+
+		local raw = Signals.Collapse(signals)
+		return true, {
+			Raw = raw,
+			AsString = function() return Signals.toString(raw) end,
+			AsNumber = function() return Signals.toNumber(raw) end,
+			AsBoolean = function() return Signals.toBoolean(raw) end
+		}
+	else
+		return false, attribute
+	end
+end
+
 function GateService.ReadInput(gateID: TGateID, nodeName: TNodeName)
 	local gate = Instances[gateID]
 	assert(gate, "Gate " .. gateID .. " does not exist")
@@ -291,20 +351,6 @@ function GateService.ReadInput(gateID: TGateID, nodeName: TNodeName)
 		AsNumber = function() return Signals.toNumber(raw) end,
 		AsBoolean = function() return Signals.toBoolean(raw) end
 	}
-end
-
-function GateService.ForceProcess(gateID: TGateID)
-	local gate = Instances[gateID]
-	assert(gate, "Gate " .. gateID .. " does not exist")
-
-	gate:Process()
-
-	-- Propagate changes to all downstream gates
-	for outputName, nodeInstance in pairs(gate.Nodes.Outputs) do
-		for downstreamGateID in pairs(nodeInstance) do
-			Updates.Propagate(downstreamGateID)
-		end
-	end
 end
 
 function GateService.TrySetAttribute(gateID: TGateID, attribute: string, value: string | number | boolean)

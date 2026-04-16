@@ -1,24 +1,23 @@
---[[ UPDATES (MULTI-OUTPUT GATES)
-	Handles signal propagation through the circuit with frame-aware batching.
+--[[ UPDATES (CENTRALIZED TIME & ACTOR MODEL)
+	Handles signal propagation and time-based state execution.
 	
 	Key Features:
-	  1. Multi-output gates: Each gate can have multiple independent outputs
-	  2. Same-frame propagation: Gates update immediately unless they exceed MAX_UPDATES_PER_GATE
-	  3. Frame deferrals: Overflowing gates defer to next frame with reset counter
-	  4. Per-output delays: Gates can pause signal propagation for specific outputs via Updates.Wait(outputName, delayTime)
-	  5. Cancellable delays: Any gate can cancel its own delayed outputs
-	  6. Output-aware propagation: Only affected downstream gates are re-processed
+	  1. Payload-Driven Wakeups: Gates schedule future Process(payload) calls natively.
+	  2. Wakeup Keys: Gates can run multiple independent timers using string keys.
+	  3. Same-frame propagation: Gates update immediately unless they exceed MAX_UPDATES_PER_GATE
+	  4. True Determinism: All delays are tied to the internal TimeWheel, preventing thread leaks.
 ]]
 
 -- Requires and Services
 local RunService = game:GetService("RunService")
 local Connections = require(script.Parent.Connections)
+local Signals = require(script.Parent.Signals)
 
 -- ----------------------------- ---------- CONFIGURATION ----------- ---------------------------
 
 local TICK_RATE = 0.1  -- Time wheel quantization granularity
 local MAX_UPDATES_PER_GATE = 30  -- Threshold before frame deferral
-local MAX_TOTAL_STEPS = 10000  -- Circuit step limit (prevents infinite loops)
+local MAX_TOTAL_STEPS = 1000  -- Circuit step limit (prevents infinite loops)
 
 -- ----------------------------- ------------- TYPES ------------------ ---------------------------
 
@@ -26,10 +25,10 @@ type TGateID = number
 type TNodeName = string
 type TSignal = string | number | boolean
 
-type DelayedOutput = {
+type ScheduledWakeup = {
 	GateID: TGateID,
-	OutputName: TNodeName,
-	Signal: TSignal,
+	WakeupKey: string,
+	Payload: any,
 	FireTime: number,
 	Active: boolean,
 }
@@ -37,20 +36,19 @@ type DelayedOutput = {
 type ExecutionContext = {
 	GateID: TGateID,
 	Depth: number,
-	DeferredOutputs: { [TNodeName]: number },  -- { outputName: delayTime }
+	ForcePropagateOutputs: { [TNodeName]: true },
 }
 
 type TGateInstance = {
 	Id: number,
 	OwnerId: number,
 	Model: Model,
-
 	Nodes: {  Outputs: { [TNodeName]: { [TGateID]: { [TNodeName]: true } } }, Inputs: { [TNodeName]: { [TGateID]: { [TNodeName]: true } } }, Signals: { [TNodeName]: TSignal } },
-	Attributes: { [string]: any }
+	Attributes: { [string]: any },
+	Process: (any, any?) -> () -- self, payload
 }
 
 -- ----------------------------- ------------- STATE ------------------ ---------------------------
-
 -- Immediate processing queue: track which gate IDs need processing
 local ImmediateQueue: { TGateID } = {}
 local UpdateCounts: { [TGateID]: number } = {}
@@ -59,15 +57,15 @@ local UpdateCounts: { [TGateID]: number } = {}
 local DeferredQueue: { TGateID } = {}
 local DeferredSet: { [TGateID]: true } = {}
 
--- Delayed output scheduling: [FireTime] = { DelayedOutput, ... }
-local TimeWheel: { [number]: { DelayedOutput } } = {}
+-- Delayed output scheduling: [FireTime] = { ScheduledWakeup, ... }
+local TimeWheel: { [number]: { ScheduledWakeup } } = {}
 
--- Current execution stack (for Updates.Wait context)
+-- Current execution stack (for ForcePropagation context)
 local ExecutionStack: { ExecutionContext } = {}
 
--- Mapping gateID -> { outputName: DelayedOutput } (one delay per output per gate)
-local PendingDelayedOutputs: { [TGateID]: { [TNodeName]: DelayedOutput } } = {}
-local PendingWireUpdates --[[: { [number]: { wire: any, signal: TSignal } }]] = setmetatable({}, { __mode = "k" })
+-- Mapping gateID -> { WakeupKey: ScheduledWakeup }
+local PendingWakeups: { [TGateID]: { [string]: ScheduledWakeup } } = {}
+local PendingWireUpdates = setmetatable({}, { __mode = "k" })
 
 local Updates = {}
 
@@ -81,102 +79,51 @@ local function quantizeTime(delay: number): number
 	return math.ceil(targetTime / TICK_RATE) * TICK_RATE
 end
 
-local function insertDelayedOutput(gateID: TGateID, outputName: TNodeName, signal: TSignal, delay: number)
-	-- Cancel any existing delayed output for this gate's output node
-	if not PendingDelayedOutputs[gateID] then
-		PendingDelayedOutputs[gateID] = {}
+local function insertWakeup(gateID: TGateID, key: string, payload: any, delay: number)
+	if not PendingWakeups[gateID] then
+		PendingWakeups[gateID] = {}
 	end
 
-	local existing = PendingDelayedOutputs[gateID][outputName]
+	-- Soft delete existing wakeup for this specific key
+	local existing = PendingWakeups[gateID][key]
 	if existing then
-		existing.Active = false  -- Soft delete
+		existing.Active = false  
 	end
 
 	local targetTime = quantizeTime(delay)
 
-	local delayedOutput: DelayedOutput = {
+	local wakeup: ScheduledWakeup = {
 		GateID = gateID,
-		OutputName = outputName,
-		Signal = signal,
+		WakeupKey = key,
+		Payload = payload,
 		FireTime = targetTime,
 		Active = true,
 	}
 
-	PendingDelayedOutputs[gateID][outputName] = delayedOutput
+	PendingWakeups[gateID][key] = wakeup
 
 	if not TimeWheel[targetTime] then
 		TimeWheel[targetTime] = {}
 	end
-	table.insert(TimeWheel[targetTime], delayedOutput)
+	table.insert(TimeWheel[targetTime], wakeup)
 end
 
 -- ----------------------------- ------- CORE UPDATE PROPAGATION -------- ---------------------------
 
 --[[ 
-	Updates.Wait(outputName: string, delayTime: number): void
+	Updates.ForcePropagation(outputName: TNodeName): void
 	
-	Called from within a gate's Process function to delay the propagation 
-	of a specific output. The gate logic completes normally, but this specific
-	output signal won't propagate downstream until after the delay.
-	
-	Can be called conditionally - if Process returns before calling Wait(),
-	the output propagates immediately (no delay).
-	
-	Supports multiple outputs: can delay different outputs for different durations
-	by calling Wait multiple times.
-	
-	Example DELAY gate:
-	  function Process(self)
-	    local input = self:ReadInput("Input").Raw
-	    local delayTime = self.Attributes.Time
-	    
-	    self.Nodes.Signals["Output"] = input
-	    Updates.Wait("Output", delayTime)
-	  end
-	
-	Example REPEATER with cancellation:
-	  function Process(self)
-	    local isEnabled = self:ReadInput("Enable").AsBoolean()
-	    
-	    if not isEnabled then
-	      self.Nodes.Signals["Output"] = false
-	      Updates.CancelOutput(self.Id, "Output")
-	      return
-	    end
-	    
-	    if Updates.IsOutputWaiting(self.Id, "Output") then
-	      return  -- Already scheduled, wait for it to fire
-	    end
-	    
-	    self.Nodes.Signals["Output"] = not self.Nodes.Signals["Output"]
-	    Updates.Wait("Output", self.Attributes.Frequency)
-	  end
+	Called from within a gate's Process function to force propagation of an output
+	regardless of whether its signal value changed.
 ]]
-function Updates.Wait(outputName: TNodeName, delayTime: number)
+function Updates.ForcePropagation(outputName: TNodeName)
 	if #ExecutionStack == 0 then
-		warn("[Updates.Wait] Called outside of gate execution context!")
+		warn("[Updates.ForcePropagation] Called outside of gate execution context!")
 		return
 	end
-	
+
 	local context = ExecutionStack[#ExecutionStack]
-	local gateID = context.GateID
-	local gate = Instances[gateID]
-	
-	if not gate then
-		warn("[Updates.Wait] Gate " .. gateID .. " does not exist!")
-		return
-	end
-	
-	if not gate.Nodes.Signals[outputName] then
-		warn("[Updates.Wait] Gate " .. gateID .. " has no output '" .. outputName .. "'")
-		return
-	end
-	
-	if delayTime and delayTime > 0 then
-		-- Schedule this gate's output for delayed propagation
-		insertDelayedOutput(gateID, outputName, gate.Nodes.Signals[outputName], delayTime)
-		context.DeferredOutputs[outputName] = delayTime
-	end
+	context.ForcePropagateOutputs[outputName] = true
 end
 
 --[[ 
@@ -214,32 +161,31 @@ local function PropagateFromOutput(gateID: TGateID, outputName: TNodeName)
 
 	local outputNode = gate.Nodes.Outputs[outputName]
 	
-	-- For each gate connected to this output
 	for downstreamGateID, inputNodeNames in pairs(outputNode) do
 		for inputNodeName in pairs(inputNodeNames) do
-			-- Queue the downstream gate
 			Updates.Propagate(downstreamGateID)
 		end
 	end
 end
 
 --[[ 
-	ProcessGate(gateID: TGateID): void
+	Updates.ProcessGate(gateID: TGateID, payload: any?): void
 	
-	Internal function that executes a gate's Process function and handles 
-	output change detection and propagation.
+	Executes a gate's Process function with an optional payload, handling 
+	output change detection, visual updates, and propagation.
+	Exposed publicly so GateService.Interact can trigger standard processing.
 ]]
-local function ProcessGate(gateID: TGateID)
+function Updates.ProcessGate(gateID: TGateID, payload: any?)
 	local gate = Instances[gateID]
 	if not gate or not gate.Process then
 		return
 	end
 
-	-- Push execution context for Updates.Wait
+	-- Push execution context
 	local context: ExecutionContext = {
 		GateID = gateID,
 		Depth = #ExecutionStack + 1,
-		DeferredOutputs = {},
+		ForcePropagateOutputs = {},
 	}
 	table.insert(ExecutionStack, context)
 
@@ -249,30 +195,38 @@ local function ProcessGate(gateID: TGateID)
 		previousSignals[outputName] = signal
 	end
 
-	-- Execute gate logic
-	gate:Process()
+	-- Execute gate logic with payload
+	gate:Process(payload)
 
 	-- Pop execution context
 	table.remove(ExecutionStack)
 
-	-- Propagate any outputs that changed and weren't deferred
-	for outputName, currentSignal in pairs(gate.Nodes.Signals) do
-		local previousSignal = previousSignals[outputName]
-		local wasDeferred = context.DeferredOutputs[outputName] ~= nil
+	local hasOutputsActive = false
 	
-		-- Only propagate if: (1) signal changed AND (2) wasn't deferred via Updates.Wait
-		if previousSignal ~= currentSignal and not wasDeferred then
+	-- Propagate any outputs that changed (Or if flagged)
+	for outputName, currentSignal in pairs(gate.Nodes.Signals) do
+		if Signals.toBoolean(currentSignal) then hasOutputsActive = true end
+		
+		local previousSignal = previousSignals[outputName]
+		local wasForcePropagated = context.ForcePropagateOutputs[outputName]
+	
+		if previousSignal ~= currentSignal or wasForcePropagated then
 			PropagateFromOutput(gateID, outputName)
 
-			local outputNode = gate.Nodes.Outputs[outputName]
-			if outputNode then
-			local wireParent = gate.Model.Nodes[outputName]
-				for _, wire in ipairs(wireParent:GetChildren()) do
-					if wire:IsA("Beam") then
-						Updates.QueueWireColorUpdate(wire, currentSignal)
-					end
-				end
+			local wires = Connections.GetOutgoing(gateID, outputName)
+			for _, wire in ipairs(wires) do
+				Updates.QueueWireColorUpdate(wire, currentSignal)
 			end
+		end
+	end
+
+	-- Change DisplayName's color (if any)
+	local displayGui = (gate.Model.Decoration :: Folder):FindFirstChild("DisplayNameGui", true)
+	if displayGui then
+		local text: TextLabel = displayGui:FindFirstChildWhichIsA("TextLabel")
+		if text then
+			if hasOutputsActive and text.TextStrokeTransparency ~= 0.7 then text.TextStrokeTransparency = 0.7 end
+			if not hasOutputsActive and text.TextStrokeTransparency ~= 1.0 then text.TextStrokeTransparency = 1.0 end
 		end
 	end
 end
@@ -280,42 +234,28 @@ end
 --[[ 
 	ProcessTimeWheel(now: number): void
 	
-	Internal function that fires all scheduled delayed outputs whose 
-	FireTime has passed.
+	Internal function that fires all scheduled wakeups whose 
+	FireTime has passed, supplying the payload to ProcessGate.
 ]]
 local function ProcessTimeWheel(now: number)
 	local quantizedNow = math.ceil(now / TICK_RATE) * TICK_RATE
 
-	for timestamp, delayedOutputs in pairs(TimeWheel) do
+	for timestamp, wakeups in pairs(TimeWheel) do
 		if timestamp <= quantizedNow then
-			for _, delayedOutput in ipairs(delayedOutputs) do
-				if delayedOutput.Active then
-					local gateID = delayedOutput.GateID
-					local outputName = delayedOutput.OutputName
+			for _, wakeup in ipairs(wakeups) do
+				if wakeup.Active then
+					local gateID = wakeup.GateID
+					local key = wakeup.WakeupKey
 					local gate = Instances[gateID]
 
 					if gate then
 						-- Clear pending mapping
-						if PendingDelayedOutputs[gateID] and PendingDelayedOutputs[gateID][outputName] == delayedOutput then
-							PendingDelayedOutputs[gateID][outputName] = nil
+						if PendingWakeups[gateID] and PendingWakeups[gateID][key] == wakeup then
+							PendingWakeups[gateID][key] = nil
 						end
 
-						-- Apply delayed signal
-						gate.Nodes.Signals[outputName] = delayedOutput.Signal
-
-						-- Queue wire color updates
-						local outputNode = gate.Nodes.Outputs[outputName]
-						if outputNode then
-							local wireParent = gate.Model.Nodes[outputName]
-								for _, wire in ipairs(wireParent:GetChildren()) do
-									if wire:IsA("Beam") then
-										Updates.QueueWireColorUpdate(wire, delayedOutput.Signal)
-									end
-								end
-						end
-
-						-- Propagate downstream
-						PropagateFromOutput(gateID, outputName)
+						-- Process the gate with its scheduled payload!
+						Updates.ProcessGate(gateID, wakeup.Payload)
 					end
 				end
 			end
@@ -328,7 +268,6 @@ end
 	Updates.QueueWireColorUpdate(wire: Beam, signal: TSignal): void
 	
 	Queues a wire color update to be applied at the end of the frame.
-	Multiple updates to the same wire are coalesced into one.
 ]]
 function Updates.QueueWireColorUpdate(wire: any, signal: TSignal)
 	PendingWireUpdates[wire] = { wire = wire, signal = signal }
@@ -339,7 +278,7 @@ end
 local function step(dt: number)
 	local now = os.clock()
 
-	-- Phase 1: Fire scheduled delayed outputs
+	-- Phase 1: Fire scheduled delayed wakeups
 	ProcessTimeWheel(now)
 
 	-- Phase 2: Inject deferred gates from last frame
@@ -356,7 +295,7 @@ local function step(dt: number)
 
 	while i <= #ImmediateQueue do
 		local gateID = ImmediateQueue[i]
-		ProcessGate(gateID)
+		Updates.ProcessGate(gateID) -- No payload for standard propagation
 
 		steps += 1
 		if steps > MAX_TOTAL_STEPS then
@@ -373,80 +312,80 @@ local function step(dt: number)
 	for wire, data in pairs(PendingWireUpdates) do
 		Connections.UpdateColor(data.wire, data.signal)
 	end
-	table.clear(PendingWireUpdates)table.clear(UpdateCounts)
+	table.clear(PendingWireUpdates)
+	table.clear(UpdateCounts)
 end
 
--- ----------------------------- ----------- CANCELLATION API ----------- ---------------------------
+-- ----------------------------- ----------- SCHEDULING API ----------- ---------------------------
 
 --[[ 
-	Updates.CancelOutput(gateID: TGateID, outputName: TNodeName): void
+	Updates.ScheduleWakeup(gateID: TGateID, delayTime: number, payload: any, wakeupKey: string?): void
 	
-	Cancels any pending delayed output for the given gate output.
-	
-	Example REPEATER cancellation:
-	  if not isEnabled then
-	    Updates.CancelOutput(self.Id, "Output")
-	    self.Nodes.Signals["Output"] = false
-	    return
-	  end
+	Schedules the gate to be evaluated in the future. The gate's `Process` function 
+	will be called with the provided `payload`.
+	`wakeupKey` is optional (defaults to "Default") and allows running multiple concurrent timers.
 ]]
-function Updates.CancelOutput(gateID: TGateID, outputName: TNodeName)
-	if not PendingDelayedOutputs[gateID] then
-		return
-	end
-
-	local delayedOutput = PendingDelayedOutputs[gateID][outputName]
-	if delayedOutput then
-		delayedOutput.Active = false
-		PendingDelayedOutputs[gateID][outputName] = nil
-	end
+function Updates.ScheduleWakeup(gateID: TGateID, delayTime: number, payload: any, wakeupKey: string?)
+	local key = wakeupKey or "Default"
+	insertWakeup(gateID, key, payload, delayTime or 0)
 end
 
 --[[ 
-	Updates.CancelAllOutputs(gateID: TGateID): void
+	Updates.CancelWakeup(gateID: TGateID, wakeupKey: string?): void
 	
-	Cancels all pending delayed outputs for a gate.
+	Cancels a specific pending wakeup for a gate.
 ]]
-function Updates.CancelAllOutputs(gateID: TGateID)
-	if not PendingDelayedOutputs[gateID] then
+function Updates.CancelWakeup(gateID: TGateID, wakeupKey: string?)
+	local key = wakeupKey or "Default"
+	if not PendingWakeups[gateID] then
 		return
 	end
 
-	for outputName, delayedOutput in pairs(PendingDelayedOutputs[gateID]) do
-		if delayedOutput then
-			delayedOutput.Active = false
+	local wakeup = PendingWakeups[gateID][key]
+	if wakeup then
+		wakeup.Active = false
+		PendingWakeups[gateID][key] = nil
+	end
+end
+
+--[[ 
+	Updates.CancelAllWakeups(gateID: TGateID): void
+	
+	Cancels all pending wakeups for a gate. Call this inside GateService.Destroy!
+]]
+function Updates.CancelAllWakeups(gateID: TGateID)
+	if not PendingWakeups[gateID] then
+		return
+	end
+
+	for key, wakeup in pairs(PendingWakeups[gateID]) do
+		if wakeup then
+			wakeup.Active = false
 		end
 	end
-	table.clear(PendingDelayedOutputs[gateID])
+	table.clear(PendingWakeups[gateID])
 end
 
 --[[ 
-	Updates.IsOutputWaiting(gateID: TGateID, outputName: TNodeName): boolean
+	Updates.IsWakeupScheduled(gateID: TGateID, wakeupKey: string?): boolean
 	
-	Returns true if a specific output has a pending delayed signal.
-	
-	Useful for gates like REPEATER that want to check if they're already scheduled.
+	Returns true if a specific wakeup is currently pending.
 ]]
-function Updates.IsOutputWaiting(gateID: TGateID, outputName: TNodeName): boolean
-	if not PendingDelayedOutputs[gateID] then
+function Updates.IsWakeupScheduled(gateID: TGateID, wakeupKey: string?): boolean
+	local key = wakeupKey or "Default"
+	if not PendingWakeups[gateID] then
 		return false
 	end
 
-	local delayedOutput = PendingDelayedOutputs[gateID][outputName]
-	return delayedOutput ~= nil and delayedOutput.Active
+	local wakeup = PendingWakeups[gateID][key]
+	return wakeup ~= nil and wakeup.Active
 end
 
 -- ----------------------------- ---------- INITIALIZATION ---------- ---------------------------
 
---[[ 
-	Updates.Initialize(instances: { [number]: TGateInstance }): void
-	
-	Must be called by GateService to inject the gate instances reference.
-	This is required for Updates to access gate data during processing.
-]]
 local isActive = false
 function Updates.Initialize(instances: { [TGateID]: TGateInstance })
-	if isActive then warn("Updates is already active! Ignoring..") end
+	if isActive then warn("Updates is already active! Ignoring..") return end
 	Instances = instances
 	RunService.Heartbeat:Connect(step)
 	isActive = true
