@@ -1,3 +1,4 @@
+local Updates = require(script.Parent.Parent.Updates)
 return {
   Nodes = { Outputs = { }, Inputs = { "R", "G", "B" } },
   DefaultVisuals = {
@@ -13,8 +14,6 @@ return {
   Process = function(self)
     local color = Color3.new(self:ReadInput("R").AsNumber(), self:ReadInput("G").AsNumber(), self:ReadInput("B").AsNumber())
 
-    self.Top.Color = color
-    self.Light.Color = color
-    self.Light.Enabled = color ~= Color3.new()
+    Updates.RegisterVisualChange(self.Model.Decoration.Top, { PointLight = { Color = color, Enabled = color ~= Color3.new() }, Color = color })
   end
 }

@@ -7,8 +7,8 @@ return {
     MainColor = Color3.fromRGB(153, 189, 189)
   },
   AttributeData = {
-    ["Delay"] = { Default = 1, Predicates = { function(value) return value >= 0 end, } },
-    ["Duration"] = { Default = 1, Predicates = { function(value) return value >= 0 end, } },
+    ["Delay"] = { Default = 1, Predicates = { function(value) return value >= 0.1 end, } },
+    ["Duration"] = { Default = 1, Predicates = { function(value) return value >= 0.1 end, } },
   },
 
   Setup = function(self)
@@ -26,7 +26,7 @@ return {
       end
     
     -- Input turned false before gate turned on: cancel timer and output false immediately
-    elseif not inputBool and not self.Nodes.Signals["Output"] then
+    elseif not inputBool then
       Updates.CancelAllWakeups(self.Id)
       self.Nodes.Signals["Output"] = false
     end
@@ -39,6 +39,11 @@ return {
       end
     elseif payload and payload.Source == "DurationExpired" then
       self.Nodes.Signals["Output"] = false
+      if inputBool and not self.Nodes.Signals["Output"] then
+        if not Updates.IsWakeupScheduled(self.Id, "DelayTimer") then
+          Updates.ScheduleWakeup(self.Id, self.Attributes.Delay, { Source = "DelayExpired" }, "DelayTimer")
+        end
+      end
     end
   end
 }

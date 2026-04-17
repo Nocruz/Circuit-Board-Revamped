@@ -1,3 +1,4 @@
+local Updates = require(script.Parent.Parent.Updates)
 return {
   Nodes = { Outputs = { }, Inputs = { "Input" } },
   DefaultVisuals = {
@@ -11,6 +12,6 @@ return {
 
   Process = function(self)
     local value: string = self:ReadInput("Input").AsString()
-    self.Label.Text = if value:lower() == "false" then "" else value
+    Updates.RegisterVisualChange(self.Label, { Text = if value:lower() == "false" then "" else value })
   end
 }

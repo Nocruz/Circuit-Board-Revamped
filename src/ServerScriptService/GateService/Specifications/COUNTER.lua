@@ -47,6 +47,6 @@ return {
   	nextCount = math.clamp(nextCount, min, max)
 
   	self.LastState = { Up = Up, Down = Down }
-	  self.Nodes.Signals["Output"] = nextCount
+    self.Nodes.Signals["Output"] = nextCount
   end
 }

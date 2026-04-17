@@ -144,7 +144,7 @@ end
 -- ----------------------------- -------------- SPAWN EVENT ------------ -----------------------------
 
 local spawnFunction = ReplicatedStorage.Client.Events:FindFirstChild("Spawn")
-spawnFunction.OnServerInvoke = function(player: Player, id: number, cframe: CFrame, visuals: GateVisualsService.TGateVisuals): (boolean, string?)
+spawnFunction.OnServerInvoke = function(player: Player, id: number, cframe: CFrame): (boolean, string?)
 	if isCooldowned(player) then 
 		print(player.Name .. " tried spawning a gate, but is still in cooldown")
 		return false, "Too fast!"
@@ -154,7 +154,7 @@ spawnFunction.OnServerInvoke = function(player: Player, id: number, cframe: CFra
 	print(player.Name .. " is requesting to spawn a gate...")
 	
 	-- Failsafe against nil parameters
-	if not id or not cframe or not visuals then
+	if not id or not cframe then
 		warn("Failure! Nil parameters found")
 		return false, "Invalid parameters! Check with a mod"
 	end
@@ -188,7 +188,7 @@ spawnFunction.OnServerInvoke = function(player: Player, id: number, cframe: CFra
 	end
 	
 	-- Spawn the new gate via GateService
-	local newGateId = GateService.Instantiate(player.UserId, gate.Name, cframe)
+	local newGateId = GateService.Instantiate(player.UserId, gate.Name, cframe, gate.Visuals)
 	print("Gate spawned with ID " .. newGateId)
 	
 	return true, nil

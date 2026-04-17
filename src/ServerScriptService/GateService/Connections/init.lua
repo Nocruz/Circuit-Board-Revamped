@@ -118,14 +118,14 @@ end
 -- ----------------------------- --------------- UTILITY ----------------- ----------------------------
 
 function Connections.GetOutgoing(gateID, outputName)
-	return if Outgoing[gateID] and Outgoing[gateID][outputName] then
-		Outgoing[gateID][outputName]
+	return if Outgoing[gateID] and Outgoing[gateID][outputName]
+		then Outgoing[gateID][outputName]
 		else {}
 end
 
 function Connections.GetIncoming(gateID, outputName)
-	return if Incoming[gateID] and Incoming[gateID][outputName] then
-		Incoming[gateID][outputName]
+	return if Incoming[gateID] and Incoming[gateID][outputName]
+		then Incoming[gateID][outputName]
 		else {}
 end
 -- ----------------------------- ------------ END OF MODULE -------------- ----------------------------

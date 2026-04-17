@@ -2,6 +2,7 @@
 local RunService = game:GetService("RunService")
 local Connections = require(script.Parent.Connections)
 local Signals = require(script.Parent.Signals)
+local VisualOptimizer = require(script.VisualOptimizer)
 
 local Updates = {}
 
@@ -23,7 +24,6 @@ local TimeWheel = {}
 local PendingWakeups = {}
 local DepthQueues = {} -- [depth] = { {gateID, payload}, ... }
 local MaxDepth = -1
-local PendingWireUpdates = setmetatable({}, { __mode = "k" })
 local isActive = false
 
 -- Utilities
@@ -91,11 +91,6 @@ local function PropagateFromOutput(originGateID, outputName, originDepth)
     end
 end
 
--- Queue wire color update
-function Updates.QueueWireColorUpdate(wire, signal)
-    PendingWireUpdates[wire] = { wire = wire, signal = signal }
-end
-
 -- Private gate processing
 local function _processGate(gateID, payload, forcedDepth)
     local gate = Instances[gateID]
@@ -126,7 +121,7 @@ local function _processGate(gateID, payload, forcedDepth)
                 PropagateFromOutput(gateID, outputName, context.Depth)
                 local wires = Connections.GetOutgoing(gateID, outputName)
                 for _, wire in ipairs(wires) do
-                    Updates.QueueWireColorUpdate(wire, currentSignal)
+                    VisualOptimizer.Register(wire, { Color = ColorSequence.new(if currentSignal then Color3.new(0.9, 0.9, 1) else Color3.new(0, 0, 0.1)) })
                 end
             end
         end
@@ -136,14 +131,17 @@ local function _processGate(gateID, payload, forcedDepth)
         if displayGui then
             local text = displayGui:FindFirstChildWhichIsA("TextLabel")
             if text then
-                if hasOutputsActive and text.TextStrokeTransparency ~= 0.7 then text.TextStrokeTransparency = 0.7 end
-                if not hasOutputsActive and text.TextStrokeTransparency ~= 1.0 then text.TextStrokeTransparency = 1.0 end
+                VisualOptimizer.Register(text, { TextStrokeTransparency = if hasOutputsActive then 0.7 else 1.0 })
             end
         end
     end
 
     table.remove(ExecutionStack)
     if not ok then error(err) end
+end
+
+function Updates.RegisterVisualChange(instance, properties)
+    VisualOptimizer.Register(instance,properties)
 end
 
 -- Public Propagate (payload optional, explicitDepth optional)
@@ -285,11 +283,9 @@ local function step(dt)
     -- Move due timewheel entries into depth 0 (they will run next tick or after current drain if any)
     moveDueTimeWheel(now)
 
-    -- Apply wire color updates
-    for wire, data in pairs(PendingWireUpdates) do
-        Connections.UpdateColor(data.wire, data.signal)
-    end
-    table.clear(PendingWireUpdates)
+    -- Trigger all visual changes
+    VisualOptimizer.ApplyAll()
+
     table.clear(UpdateCounts)
 end
 

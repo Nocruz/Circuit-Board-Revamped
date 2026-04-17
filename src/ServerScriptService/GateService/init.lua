@@ -35,6 +35,7 @@ export type TGateInstance = {
 	Id: number,
 	OwnerId: TPlayerID,
 	Model: TGateModel,
+	Visuals: any,
 	
 	Nodes: { Outputs: { [TNodeName]: TNodeInstance }, Inputs: { [TNodeName]: TNodeInstance }, Signals: { [TNodeName]: TSignal } },
 	Attributes: { [TAttributeName]: TAttribute }
@@ -154,6 +155,7 @@ function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecifica
 		gate.OwnerId = owner
 		gate.Model = model
 		gate.Nodes = { Outputs = {}, Inputs = {}, Signals = {} }
+		gate.Visuals = visuals
 		for _, output in ipairs(specification.Nodes.Outputs) do gate.Nodes.Outputs[output] = { }; gate.Nodes.Signals[output] = false end
 		for _, input in ipairs(specification.Nodes.Inputs) do gate.Nodes.Inputs[input] = { } end
 		gate.Attributes = {}
@@ -187,23 +189,15 @@ function GateService.Move(gateID: TGateID, to: CFrame)
 	
 	-- Move all in connections
 	for inputName, nodeInstance in pairs(gate.Nodes.Inputs) do
-		for fromGateID, outputs in pairs(nodeInstance) do
-			for outputName in pairs(outputs) do
-				for _, wire in ipairs(Connections.GetIncoming(gateID, outputName)) do
-					Connections.UpdateCFrame(wire)
-				end
-			end
+		for _, wire in ipairs(Connections.GetIncoming(gateID, inputName)) do
+			Connections.UpdateCFrame(wire)
 		end
 	end
 	
 	-- Move all out connections
 	for outputName, nodeInstance in pairs(gate.Nodes.Outputs) do
-		for toGateID, inputs in pairs(nodeInstance) do
-			for inputName in pairs(inputs) do
-				for _, wire in ipairs(Connections.GetOutgoing(gateID, inputName)) do
-					Connections.UpdateCFrame(wire)
-				end
-			end
+		for _, wire in ipairs(Connections.GetOutgoing(gateID, outputName)) do
+			Connections.UpdateCFrame(wire)
 		end
 	end
 end
@@ -225,7 +219,6 @@ function GateService.Connect(fromID: TGateID, toID: TGateID, Nodes: { from: TNod
 	
 	local wire = Connections.new(fromID, toID, fromGate.Model.Nodes[Nodes.from], toGate.Model.Nodes[Nodes.to])
 	Connections.UpdateCFrame(wire)
-	Updates.QueueWireColorUpdate(wire, fromGate.Nodes.Signals[Nodes.from])
 	
 	Updates.Propagate(toID)
 end
