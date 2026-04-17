@@ -1,5 +1,6 @@
 --!strict
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterPlayerScripts = game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts")
 local LocalServices = StarterPlayerScripts.Services
@@ -10,108 +11,218 @@ local ClipboardMode = require(StarterPlayerScripts.Tool.ClipboardMode)
 local ClipboardUI = require(StarterPlayerScripts.Tool.ClipboardUI)
 local GridService = require(ReplicatedStorage.Services.GridService)
 
+local player = Players.LocalPlayer
 local clientFolder = ReplicatedStorage:WaitForChild("Client")
-local gatesFolder = clientFolder:WaitForChild("Gates")
-local queriesFolder = gatesFolder:WaitForChild("Queries")
-local eventsFolder = gatesFolder:WaitForChild("Events")
+local queriesFolder = clientFolder:WaitForChild("Queries")
+local eventsFolder = clientFolder:WaitForChild("Events")
 
-local clipboardListRemote = queriesFolder:WaitForChild("ClipboardList") :: RemoteFunction
+local clipboardHasSaveRemote = queriesFolder:WaitForChild("ClipboardHasSave") :: RemoteFunction
+local clipboardPreviewRemote = queriesFolder:WaitForChild("ClipboardPreview") :: RemoteFunction
 local clipboardSaveRemote = eventsFolder:WaitForChild("ClipboardSave") :: RemoteFunction
-local clipboardRestoreRemote = eventsFolder:WaitForChild("ClipboardRestore") :: RemoteFunction
+local clipboardLoadRemote = eventsFolder:WaitForChild("ClipboardLoad") :: RemoteFunction
 
 local Tool = script.Parent
 
-local function setStatusForSelection()
-	if not ClipboardMode.HasSelection() then
-		ClipboardUI.SetStatus("Click once to place the first corner of the box.")
-	elseif ClipboardMode.IsLocked() then
-		ClipboardUI.SetStatus("Selection locked. Save it, or click again to start a new box.")
-	else
-		ClipboardUI.SetStatus("Move the cursor to size the box, then click again to lock it.")
+local deathConnection: RBXScriptConnection?
+local hasStoredSave = false
+local equipped = false
+
+local function disconnectDeathConnection()
+	if deathConnection then
+		deathConnection:Disconnect()
+		deathConnection = nil
 	end
 end
 
-local function refreshBuilds()
-	local success, message, builds = clipboardListRemote:InvokeServer()
+local function getIdleStatus(): string
+	if ClipboardMode.IsLoadPlacementArmed() then
+		return "Click a point to place the saved draft."
+	end
+	if ClipboardMode.IsDragging() then
+		return "Release to finish the selection box."
+	end
+
+	local selectionCount = ClipboardMode.GetSelectionCount()
+	if selectionCount > 0 then
+		return string.format("%d gates selected. Save the draft or arm load placement.", selectionCount)
+	end
+	if ClipboardMode.HasSelectionBox() then
+		return "No gates were inside that box."
+	end
+
+	return "Drag across the board to select gates."
+end
+
+local function syncUiState(customStatus: string?, isError: boolean?)
+	local canSave = ClipboardMode.GetSelectionCount() > 0 and not ClipboardMode.IsLoadPlacementArmed()
+	ClipboardUI.SetSaveEnabled(canSave)
+	ClipboardUI.SetLoadArmed(ClipboardMode.IsLoadPlacementArmed())
+	ClipboardUI.SetStatus(customStatus or getIdleStatus(), isError)
+end
+
+local function resetState(customStatus: string?)
+	ClipboardMode.Reset()
+	syncUiState(customStatus)
+end
+
+local function refreshStoredDraft(): boolean
+	local success, result = clipboardHasSaveRemote:InvokeServer()
 	if not success then
-		ClipboardUI.SetStatus(message or "Couldn't refresh the clipboard.", true)
-		return
+		hasStoredSave = false
+		syncUiState((result :: string?) or "Couldn't check clipboard draft state.", true)
+		return false
 	end
 
-	ClipboardUI.SetBuilds(builds or {})
+	hasStoredSave = result == true
+	return true
 end
 
-local function onSave(title: string)
-	local minBounds, maxBounds = ClipboardMode.GetSelectionBounds()
-	if minBounds == nil or maxBounds == nil then
-		MessageService.SendMessage("Draw a selection box before saving.")
-		ClipboardUI.SetStatus("Draw a selection box before saving.", true)
+local function onSave()
+	local gateIds = ClipboardMode.GetSelectedGateIds()
+	if #gateIds == 0 then
+		syncUiState("Select at least one gate before saving.", true)
 		return
 	end
 
-	local success, message, builds = clipboardSaveRemote:InvokeServer(title, minBounds, maxBounds)
+	local success, message = clipboardSaveRemote:InvokeServer(gateIds)
 	if not success then
-		MessageService.SendMessage(message or "Failed to save selection.")
-		ClipboardUI.SetStatus(message or "Failed to save selection.", true)
+		MessageService.SendMessage(message or "Failed to save clipboard draft.")
+		syncUiState(message or "Failed to save clipboard draft.", true)
 		return
 	end
 
-	ClipboardUI.SetBuilds(builds or {})
-	ClipboardUI.SetStatus("Saved '" .. title .. "' to the clipboard.")
+	hasStoredSave = true
+	syncUiState(string.format("Saved draft with %d gates.", #gateIds))
 end
 
-local function onRestore(title: string)
-	if PointerService.HitPosition == nil then
-		MessageService.SendMessage("Point at the board to choose where to restore the build.")
-		ClipboardUI.SetStatus("Point at the board before restoring.", true)
+local function onLoad()
+	if ClipboardMode.IsLoadPlacementArmed() then
+		ClipboardMode.CancelLoadPlacement()
+		syncUiState()
 		return
 	end
 
-	local anchor = GridService.fromCFrame(CFrame.new(PointerService.HitPosition))._cframe
-	local success, message, builds = clipboardRestoreRemote:InvokeServer(title, anchor)
+	if not hasStoredSave then
+		ClipboardUI.FlashLoadUnavailable()
+		syncUiState("Save a draft before loading it.", true)
+		return
+	end
+
+	local success, message, previewData = clipboardPreviewRemote:InvokeServer()
 	if not success then
-		MessageService.SendMessage(message or "Failed to restore build.")
-		ClipboardUI.SetStatus(message or "Failed to restore build.", true)
+		if message == "No clipboard draft has been saved yet." then
+			hasStoredSave = false
+			ClipboardUI.FlashLoadUnavailable()
+		end
+		syncUiState(message or "Couldn't build clipboard preview.", true)
 		return
 	end
 
-	ClipboardUI.SetBuilds(builds or {})
-	ClipboardUI.SetStatus("Restored '" .. title .. "' at the current cursor position.")
+	ClipboardMode.ArmLoadPlacement(previewData)
+	syncUiState()
 end
 
-local function onReset()
-	ClipboardMode.ClearSelection()
-	setStatusForSelection()
+local function bindDeathReset(character: Model)
+	disconnectDeathConnection()
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid == nil then
+		return
+	end
+
+	deathConnection = humanoid.Died:Connect(function()
+		resetState("Clipboard draft reset.")
+	end)
 end
 
-local function equipped()
+local function onEquipped()
+	equipped = true
 	ClipboardMode.Start()
 	ClipboardUI.Open({
 		OnSave = onSave,
-		OnRestore = onRestore,
-		OnRefresh = refreshBuilds,
-		OnReset = onReset,
+		OnLoad = onLoad,
 	})
-	refreshBuilds()
-	setStatusForSelection()
+
+	local character = player.Character
+	if character then
+		bindDeathReset(character)
+	end
+
+	resetState()
+	refreshStoredDraft()
 end
 
-local function unequipped()
-	ClipboardUI.Close()
+local function onUnequipped()
+	equipped = false
+	disconnectDeathConnection()
 	ClipboardMode.Stop()
+	ClipboardUI.Close()
 end
 
-local function activated()
-	local success, message = ClipboardMode.AdvanceSelection()
-	if not success then
-		MessageService.SendMessage(message or "Couldn't place clipboard selection.")
-		ClipboardUI.SetStatus(message or "Couldn't place clipboard selection.", true)
+local function onActivated()
+	if not equipped then
 		return
 	end
 
-	setStatusForSelection()
+	if ClipboardMode.IsLoadPlacementArmed() then
+		local hitPosition = PointerService.HitPosition
+		if hitPosition == nil then
+			MessageService.SendMessage("Point at a valid spot to place the saved draft.")
+			syncUiState("Point at a valid spot to place the saved draft.", true)
+			return
+		end
+
+		local anchorCFrame = GridService.fromCFrame(CFrame.new(hitPosition))._cframe
+		local success, message = clipboardLoadRemote:InvokeServer(anchorCFrame)
+		resetState()
+		if not success then
+			MessageService.SendMessage(message or "Failed to load clipboard draft.")
+			if message == "No clipboard draft has been saved yet." then
+				hasStoredSave = false
+			end
+			syncUiState(message or "Failed to load clipboard draft.", true)
+			return
+		end
+
+		syncUiState("Loaded the saved draft at the clicked point.")
+		return
+	end
+
+	local success, message = ClipboardMode.BeginDrag()
+	if not success then
+		MessageService.SendMessage(message or "Couldn't start the clipboard selection.")
+		syncUiState(message or "Couldn't start the clipboard selection.", true)
+		return
+	end
+
+	syncUiState()
 end
 
-Tool.Equipped:Connect(equipped)
-Tool.Unequipped:Connect(unequipped)
-Tool.Activated:Connect(activated)
+local function onDeactivated()
+	if not equipped or ClipboardMode.IsLoadPlacementArmed() then
+		return
+	end
+
+	local success, message = ClipboardMode.EndDrag()
+	if not success then
+		if message then
+			MessageService.SendMessage(message)
+			syncUiState(message, true)
+		end
+		return
+	end
+
+	syncUiState(message)
+end
+
+player.CharacterAdded:Connect(function(character)
+	if equipped then
+		bindDeathReset(character)
+		resetState()
+	end
+end)
+
+Tool.Equipped:Connect(onEquipped)
+Tool.Unequipped:Connect(onUnequipped)
+Tool.Activated:Connect(onActivated)
+Tool.Deactivated:Connect(onDeactivated)

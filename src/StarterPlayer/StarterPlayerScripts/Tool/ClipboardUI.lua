@@ -2,36 +2,32 @@
 
 local Players = game:GetService("Players")
 
-export type TBuildSummary = {
-	Title: string,
-	GateCount: number,
-	WireCount: number,
-	UpdatedAt: number,
-}
-
 type TCallbacks = {
-	OnSave: (title: string) -> (),
-	OnRestore: (title: string) -> (),
-	OnRefresh: () -> (),
-	OnReset: () -> (),
+	OnSave: () -> (),
+	OnLoad: () -> (),
 }
 
 local ClipboardUI = {}
 
 local activeGui: ScreenGui?
-local titleBox: TextBox?
 local statusLabel: TextLabel?
-local buildList: ScrollingFrame?
+local saveButton: TextButton?
+local loadButton: TextButton?
 local callbacks: TCallbacks?
 
+local saveEnabled = false
+local loadArmed = false
+local flashToken = 0
+
 local COLORS = {
-	Background = Color3.fromRGB(26, 28, 34),
-	Panel = Color3.fromRGB(38, 42, 52),
-	PanelAlt = Color3.fromRGB(49, 54, 66),
+	Background = Color3.fromRGB(25, 28, 34),
+	Panel = Color3.fromRGB(37, 42, 52),
 	Text = Color3.fromRGB(244, 246, 250),
-	Muted = Color3.fromRGB(165, 173, 188),
+	Muted = Color3.fromRGB(167, 174, 189),
 	Accent = Color3.fromRGB(255, 214, 102),
-	Error = Color3.fromRGB(255, 126, 95),
+	Disabled = Color3.fromRGB(82, 88, 99),
+	LoadArmed = Color3.fromRGB(100, 211, 156),
+	Error = Color3.fromRGB(222, 90, 90),
 }
 
 local function create(className: string, props: { [string]: any }, children: { Instance }?): Instance
@@ -45,83 +41,39 @@ local function create(className: string, props: { [string]: any }, children: { I
 	return instance
 end
 
-local function clearBuildRows()
-	if buildList == nil then
+local function applySaveButtonState()
+	if saveButton == nil then
 		return
 	end
 
-	for _, child in ipairs(buildList:GetChildren()) do
-		if not child:IsA("UIListLayout") then
-			child:Destroy()
-		end
-	end
+	saveButton.Active = saveEnabled
+	saveButton.AutoButtonColor = saveEnabled
+	saveButton.BackgroundColor3 = if saveEnabled then COLORS.Accent else COLORS.Disabled
+	saveButton.TextColor3 = if saveEnabled then Color3.fromRGB(34, 32, 27) else COLORS.Muted
 end
 
-local function buildRow(summary: TBuildSummary)
-	local onRestore = callbacks and callbacks.OnRestore
-	local row = create("Frame", {
-		BackgroundColor3 = COLORS.PanelAlt,
-		Size = UDim2.new(1, -8, 0, 44),
-		BorderSizePixel = 0,
-	}, {
-		create("UICorner", {
-			CornerRadius = UDim.new(0, 8),
-		}),
-	})
+local function applyLoadButtonState()
+	if loadButton == nil then
+		return
+	end
 
-	create("TextLabel", {
-		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(10, 6),
-		Size = UDim2.new(1, -110, 0, 18),
-		Font = Enum.Font.GothamBold,
-		Text = summary.Title,
-		TextColor3 = COLORS.Text,
-		TextSize = 13,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = row,
-	})
-
-	create("TextLabel", {
-		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(10, 22),
-		Size = UDim2.new(1, -110, 0, 16),
-		Font = Enum.Font.Gotham,
-		Text = string.format("%d gates, %d wires", summary.GateCount, summary.WireCount),
-		TextColor3 = COLORS.Muted,
-		TextSize = 11,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = row,
-	})
-
-	local restoreButton = create("TextButton", {
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -8, 0.5, 0),
-		Size = UDim2.fromOffset(84, 28),
-		BackgroundColor3 = COLORS.Accent,
-		BorderSizePixel = 0,
-		Font = Enum.Font.GothamBold,
-		Text = "Restore",
-		TextColor3 = Color3.fromRGB(34, 32, 27),
-		TextSize = 12,
-		Parent = row,
-	}, {
-		create("UICorner", {
-			CornerRadius = UDim.new(0, 8),
-		}),
-	}) :: TextButton
-
-	restoreButton.MouseButton1Click:Connect(function()
-		if onRestore then
-			onRestore(summary.Title)
-		end
-	end)
-
-	return row
+	if loadArmed then
+		loadButton.BackgroundColor3 = COLORS.LoadArmed
+		loadButton.TextColor3 = Color3.fromRGB(20, 46, 31)
+		loadButton.Text = "Click to Place"
+	else
+		loadButton.BackgroundColor3 = COLORS.Panel
+		loadButton.TextColor3 = COLORS.Text
+		loadButton.Text = "Load"
+	end
 end
 
 function ClipboardUI.Open(newCallbacks: TCallbacks)
 	ClipboardUI.Close()
 	callbacks = newCallbacks
+	saveEnabled = false
+	loadArmed = false
+	flashToken = 0
 
 	activeGui = Instance.new("ScreenGui")
 	activeGui.Name = "ClipboardGui"
@@ -131,23 +83,23 @@ function ClipboardUI.Open(newCallbacks: TCallbacks)
 	local panel = create("Frame", {
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 18, 0.5, 0),
-		Size = UDim2.fromOffset(340, 360),
+		Size = UDim2.fromOffset(290, 150),
 		BackgroundColor3 = COLORS.Background,
 		BorderSizePixel = 0,
 		Parent = activeGui,
 	}, {
 		create("UICorner", { CornerRadius = UDim.new(0, 14) }),
-		create("UIStroke", { Color = COLORS.PanelAlt, Thickness = 2 }),
+		create("UIStroke", { Color = COLORS.Panel, Thickness = 2 }),
 	})
 
 	create("TextLabel", {
 		BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(16, 12),
-		Size = UDim2.new(1, -32, 0, 24),
+		Size = UDim2.new(1, -32, 0, 22),
 		Font = Enum.Font.GothamBold,
-		Text = "Clipboard",
+		Text = "Clipboard Draft",
 		TextColor3 = COLORS.Text,
-		TextSize = 20,
+		TextSize = 19,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = panel,
 	})
@@ -155,9 +107,9 @@ function ClipboardUI.Open(newCallbacks: TCallbacks)
 	create("TextLabel", {
 		BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(16, 38),
-		Size = UDim2.new(1, -32, 0, 34),
+		Size = UDim2.new(1, -32, 0, 28),
 		Font = Enum.Font.Gotham,
-		Text = "Click once to place the first corner, click again to lock the box, then save it with a title.",
+		Text = "Drag to box gates, save the current draft, then load it by clicking a placement point.",
 		TextColor3 = COLORS.Muted,
 		TextSize = 12,
 		TextWrapped = true,
@@ -166,134 +118,86 @@ function ClipboardUI.Open(newCallbacks: TCallbacks)
 		Parent = panel,
 	})
 
-	titleBox = create("TextBox", {
-		Position = UDim2.fromOffset(16, 82),
-		Size = UDim2.new(1, -32, 0, 36),
-		BackgroundColor3 = COLORS.Panel,
-		BorderSizePixel = 0,
-		ClearTextOnFocus = false,
-		Font = Enum.Font.Gotham,
-		PlaceholderText = "Save title",
-		Text = "",
-		TextColor3 = COLORS.Text,
-		TextSize = 14,
-		Parent = panel,
-	}, {
-		create("UICorner", { CornerRadius = UDim.new(0, 10) }),
-	}) :: TextBox
-
-	local saveButton = create("TextButton", {
-		Position = UDim2.fromOffset(16, 128),
-		Size = UDim2.fromOffset(116, 34),
-		BackgroundColor3 = COLORS.Accent,
+	saveButton = create("TextButton", {
+		Position = UDim2.fromOffset(16, 78),
+		Size = UDim2.fromOffset(122, 38),
 		BorderSizePixel = 0,
 		Font = Enum.Font.GothamBold,
-		Text = "Save Box",
-		TextColor3 = Color3.fromRGB(34, 32, 27),
-		TextSize = 13,
+		Text = "Save",
+		TextSize = 14,
 		Parent = panel,
 	}, {
 		create("UICorner", { CornerRadius = UDim.new(0, 10) }),
 	}) :: TextButton
 	saveButton.MouseButton1Click:Connect(function()
-		local onSave = callbacks and callbacks.OnSave
-		if onSave and titleBox then
-			onSave(titleBox.Text)
+		if saveEnabled and callbacks then
+			callbacks.OnSave()
 		end
 	end)
 
-	local refreshButton = create("TextButton", {
-		Position = UDim2.fromOffset(140, 128),
-		Size = UDim2.fromOffset(86, 34),
+	loadButton = create("TextButton", {
+		Position = UDim2.fromOffset(152, 78),
+		Size = UDim2.fromOffset(122, 38),
 		BackgroundColor3 = COLORS.Panel,
 		BorderSizePixel = 0,
 		Font = Enum.Font.GothamBold,
-		Text = "Refresh",
+		Text = "Load",
 		TextColor3 = COLORS.Text,
-		TextSize = 13,
+		TextSize = 14,
 		Parent = panel,
 	}, {
 		create("UICorner", { CornerRadius = UDim.new(0, 10) }),
 	}) :: TextButton
-	refreshButton.MouseButton1Click:Connect(function()
-		local onRefresh = callbacks and callbacks.OnRefresh
-		if onRefresh then
-			onRefresh()
-		end
-	end)
-
-	local resetButton = create("TextButton", {
-		Position = UDim2.fromOffset(234, 128),
-		Size = UDim2.fromOffset(90, 34),
-		BackgroundColor3 = COLORS.Panel,
-		BorderSizePixel = 0,
-		Font = Enum.Font.GothamBold,
-		Text = "Reset Box",
-		TextColor3 = COLORS.Text,
-		TextSize = 13,
-		Parent = panel,
-	}, {
-		create("UICorner", { CornerRadius = UDim.new(0, 10) }),
-	}) :: TextButton
-	resetButton.MouseButton1Click:Connect(function()
-		local onReset = callbacks and callbacks.OnReset
-		if onReset then
-			onReset()
+	loadButton.MouseButton1Click:Connect(function()
+		if callbacks then
+			callbacks.OnLoad()
 		end
 	end)
 
 	statusLabel = create("TextLabel", {
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(16, 172),
-		Size = UDim2.new(1, -32, 0, 18),
+		Position = UDim2.fromOffset(16, 122),
+		Size = UDim2.new(1, -32, 0, 16),
 		Font = Enum.Font.Gotham,
-		Text = "Hover where you want to restore a saved build.",
+		Text = "Drag on the board to start a selection.",
 		TextColor3 = COLORS.Muted,
 		TextSize = 12,
+		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = panel,
 	}) :: TextLabel
 
-	buildList = create("ScrollingFrame", {
-		Position = UDim2.fromOffset(12, 196),
-		Size = UDim2.new(1, -24, 1, -208),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		CanvasSize = UDim2.fromOffset(0, 0),
-		ScrollBarThickness = 6,
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		Parent = panel,
-	}, {
-		create("UIListLayout", {
-			Padding = UDim.new(0, 8),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		}),
-	}) :: ScrollingFrame
+	applySaveButtonState()
+	applyLoadButtonState()
 end
 
-function ClipboardUI.SetBuilds(builds: { TBuildSummary })
-	clearBuildRows()
-	if buildList == nil then
+function ClipboardUI.SetSaveEnabled(enabled: boolean)
+	saveEnabled = enabled
+	applySaveButtonState()
+end
+
+function ClipboardUI.SetLoadArmed(armed: boolean)
+	loadArmed = armed
+	applyLoadButtonState()
+end
+
+function ClipboardUI.FlashLoadUnavailable()
+	if loadButton == nil then
 		return
 	end
 
-	if #builds == 0 then
-		create("TextLabel", {
-			BackgroundTransparency = 1,
-			Size = UDim2.new(1, -8, 0, 28),
-			Font = Enum.Font.Gotham,
-			Text = "No saved builds in this server yet.",
-			TextColor3 = COLORS.Muted,
-			TextSize = 12,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			Parent = buildList,
-		})
-		return
-	end
+	flashToken += 1
+	local currentToken = flashToken
+	loadButton.BackgroundColor3 = COLORS.Error
+	loadButton.TextColor3 = COLORS.Text
+	loadButton.Text = "No Save"
 
-	for _, summary in ipairs(builds) do
-		buildRow(summary).Parent = buildList
-	end
+	task.delay(0.2, function()
+		if currentToken ~= flashToken then
+			return
+		end
+		applyLoadButtonState()
+	end)
 end
 
 function ClipboardUI.SetStatus(text: string, isError: boolean?)
@@ -305,22 +209,19 @@ function ClipboardUI.SetStatus(text: string, isError: boolean?)
 	statusLabel.TextColor3 = if isError then COLORS.Error else COLORS.Muted
 end
 
-function ClipboardUI.SetTitle(text: string)
-	if titleBox then
-		titleBox.Text = text
-	end
-end
-
 function ClipboardUI.Close()
 	if activeGui then
 		activeGui:Destroy()
 		activeGui = nil
 	end
 
-	titleBox = nil
 	statusLabel = nil
-	buildList = nil
+	saveButton = nil
+	loadButton = nil
 	callbacks = nil
+	saveEnabled = false
+	loadArmed = false
+	flashToken = 0
 end
 
 return ClipboardUI

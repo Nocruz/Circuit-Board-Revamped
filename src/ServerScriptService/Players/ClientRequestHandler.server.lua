@@ -11,12 +11,33 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local PermissionService = require(ServerScriptService.Players.PermissionService)
+local ClipboardService = require(ServerScriptService.Players.ClipboardService)
 local GateService = require(ServerScriptService.GateService)
 local GridService = require(ReplicatedStorage.Services.GridService)
+
+local clientFolder = ReplicatedStorage:WaitForChild("Client")
+local queriesFolder = clientFolder:WaitForChild("Queries")
+local eventsFolder = clientFolder:WaitForChild("Events")
 
 -- Cooldown state
 local PlayerCooldowns: { [number]: true } = {}
 local ACTION_COOLDOWN = 0.05 -- seconds
+
+local function ensureRemoteFunction(parent: Instance, name: string): RemoteFunction
+	local existing = parent:FindFirstChild(name)
+	if existing and existing:IsA("RemoteFunction") then
+		return existing
+	end
+
+	if existing then
+		existing:Destroy()
+	end
+
+	local remote = Instance.new("RemoteFunction")
+	remote.Name = name
+	remote.Parent = parent
+	return remote
+end
 
 -- ----------------------------- ------------ HELPER METHODS ----------- -----------------------------
 
@@ -556,4 +577,46 @@ configureFunction.OnServerInvoke = function(player: Player, id: number, attribut
 	print("Gate " .. id .. " attribute " .. attribute .. " set to " .. tostring(value))
 
 	return true, nil
+end
+
+-- ----------------------------- -------------- CLIPBOARD DRAFT ----------- -----------------------------
+
+local clipboardHasSaveQuery = ensureRemoteFunction(queriesFolder, "ClipboardHasSave")
+clipboardHasSaveQuery.OnServerInvoke = function(player: Player): (boolean, boolean | string)
+	if isCooldowned(player) then
+		return false, "Too fast!"
+	end
+
+	setCooldown(player)
+	return true, ClipboardService.HasDraft(player.UserId)
+end
+
+local clipboardPreviewQuery = ensureRemoteFunction(queriesFolder, "ClipboardPreview")
+clipboardPreviewQuery.OnServerInvoke = function(player: Player): (boolean, string?, any?)
+	if isCooldowned(player) then
+		return false, "Too fast!", nil
+	end
+
+	setCooldown(player)
+	return ClipboardService.GetDraftPreview(player.UserId)
+end
+
+local clipboardSaveFunction = ensureRemoteFunction(eventsFolder, "ClipboardSave")
+clipboardSaveFunction.OnServerInvoke = function(player: Player, gateIds: { number }): (boolean, string?)
+	if isCooldowned(player) then
+		return false, "Too fast!"
+	end
+
+	setCooldown(player)
+	return ClipboardService.SaveDraft(player, gateIds)
+end
+
+local clipboardLoadFunction = ensureRemoteFunction(eventsFolder, "ClipboardLoad")
+clipboardLoadFunction.OnServerInvoke = function(player: Player, anchorCFrame: CFrame): (boolean, string?)
+	if isCooldowned(player) then
+		return false, "Too fast!"
+	end
+
+	setCooldown(player)
+	return ClipboardService.LoadDraft(player, anchorCFrame)
 end

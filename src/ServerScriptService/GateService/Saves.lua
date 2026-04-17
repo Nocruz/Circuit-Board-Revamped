@@ -44,7 +44,6 @@ Data = {
 --  local ok, res = SaveManager.Load(saveTable, 0, { ConnectDelay = 1.5 })
 --
 
-local RunService = game:GetService("RunService")
 local GateService = require(script.Parent)
 local Connections = require(script.Parent.Connections)
 local Updates = require(script.Parent.Updates)
@@ -73,13 +72,9 @@ local function deserializeVector3(t)
 end
 
 local function serializeCFrame(cf)
-    -- store position + rotation as 12 numbers (Roblox CFrame components)
-    local p = cf.Position
-    local r00, r01, r02, r10, r11, r12, r20, r21, r22 = cf:GetComponents()
-    -- Simpler: store position and lookVector/upVector if you prefer; here we store full components
+    local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = cf:GetComponents()
     return {
-        Position = serializeVector3(p),
-        -- store rotation matrix components
+        Position = serializeVector3(Vector3.new(x, y, z)),
         R00 = r00, R01 = r01, R02 = r02,
         R10 = r10, R11 = r11, R12 = r12,
         R20 = r20, R21 = r21, R22 = r22,
@@ -89,27 +84,16 @@ end
 local function deserializeCFrame(t)
     if not t or not t.Position then return CFrame.new() end
     local p = deserializeVector3(t.Position)
-    -- reconstruct CFrame from matrix components if present
-    if t.R00 then
-        local r00, r01, r02 = t.R00, t.R01, t.R02
-        local r10, r11, r12 = t.R10, t.R11, t.R12
-        local r20, r21, r22 = t.R20, t.R21, t.R22
-        -- Build CFrame from matrix: CFrame.new(pos) * CFrame.fromMatrix(Vector3.new(), right, up, back)
-        -- Roblox has CFrame.fromMatrix in newer APIs; fallback to using lookVector/upVector if not available
-        local right = Vector3.new(r00, r10, r20)
-        local up = Vector3.new(r01, r11, r21)
-        local back = Vector3.new(r02, r12, r22)
-        -- CFrame.fromMatrix expects right, up, back? Use CFrame.fromMatrix if available
-        if CFrame.fromMatrix then
-            return CFrame.fromMatrix(p, right, up, back)
-        else
-            -- fallback: approximate using lookVector/upVector
-            local look = -back
-            return CFrame.new(p, p + look)
-        end
-    else
+    if t.R00 == nil then
         return CFrame.new(p)
     end
+
+    return CFrame.new(
+        p.X, p.Y, p.Z,
+        t.R00, t.R01, t.R02,
+        t.R10, t.R11, t.R12,
+        t.R20, t.R21, t.R22
+    )
 end
 
 local function nowTimestamp()
@@ -184,6 +168,7 @@ function SaveManager.Save(gateIdArray, options)
     save.Owner = options.Owner or { Name = "Unknown", Id = -1 }
     save.SaveName = options.SaveName or ("Save_" .. tostring(save.Timestamp))
     save.Offset = options.Offset or { X = 0, Y = 0, Z = 0 }
+    save.BaseCFrame = nil
 
     save.Gates = {}
     save.Connections = {}
@@ -207,6 +192,9 @@ function SaveManager.Save(gateIdArray, options)
             -- CFrame: serialize model pivot
             if gate.Model and gate.Model:GetPivot() then
                 entry.CFrame = serializeCFrame(gate.Model:GetPivot())
+                if save.BaseCFrame == nil then
+                    save.BaseCFrame = serializeCFrame(gate.Model:GetPivot())
+                end
             else
                 entry.CFrame = serializeCFrame(CFrame.new())
             end
@@ -224,6 +212,8 @@ function SaveManager.Save(gateIdArray, options)
             warn("Gate " .. id .. " was saved but not found")
         end
     end
+
+    save.BaseCFrame = save.BaseCFrame or serializeCFrame(CFrame.new())
 
     -- Compute bounding box
     local bbox = computeBoundingBox(gatesToComputeBBox)
@@ -279,7 +269,17 @@ function SaveManager.Load(saveTable, owner, opts)
     opts = opts or {}
     local batchSize = opts.BatchSize or DEFAULT_BATCH_SIZE
     local connectDelay = opts.ConnectDelay or DEFAULT_CONNECT_DELAY
-    local offsetCFrame = opts.OffsetCFrame or CFrame.new()
+    local anchorValue = opts.Offset
+    if anchorValue == nil then
+        anchorValue = opts.OffsetCFrame
+    end
+    local hasAnchor = anchorValue ~= nil
+    local anchorCFrame = CFrame.new()
+    if typeof(anchorValue) == "CFrame" then
+        anchorCFrame = anchorValue
+    elseif typeof(anchorValue) == "Vector3" then
+        anchorCFrame = CFrame.new(anchorValue)
+    end
     owner = owner or (saveTable and saveTable.Owner and saveTable.Owner.Id) or 0
 
     -- Basic validation
@@ -302,9 +302,19 @@ function SaveManager.Load(saveTable, owner, opts)
     for oldId in pairs(saveTable.Gates) do table.insert(oldIds, oldId) end
     table.sort(oldIds) -- deterministic order for instantiation
 
+    local transformCFrame = CFrame.new()
+    if hasAnchor then
+        if saveTable.BaseCFrame then
+            local basePosition = deserializeCFrame(saveTable.BaseCFrame).Position
+            transformCFrame = CFrame.new(anchorCFrame.Position - basePosition)
+        else
+            transformCFrame = CFrame.new(anchorCFrame.Position)
+        end
+    end
+
     -- Instantiate in batches
     local function instantiateOne(oldId, entry)
-        local cframe = deserializeCFrame(entry.CFrame) * offsetCFrame
+        local cframe = transformCFrame * deserializeCFrame(entry.CFrame)
         local visuals = entry.Visuals or {}
         local attributes = entry.Attributes or {}
         -- Call Instantiate with suppressInitialPropagate = true (see note at top)
