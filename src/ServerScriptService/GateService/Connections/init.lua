@@ -58,6 +58,7 @@ function Connections.new(fromID: number, toID: number, fromNode: BasePart, toNod
 	wire:SetAttribute("ToGate", toID)
 	wire:SetAttribute("FromNode", fromNode.Name)
 	wire:SetAttribute("ToNode", toNode.Name)
+	wire:SetAttribute("Timestamp", tick())
 	
 	Wires[wire] = {
 		fromID = fromID,

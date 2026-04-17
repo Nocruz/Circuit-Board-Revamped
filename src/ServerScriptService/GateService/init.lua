@@ -132,7 +132,7 @@ function GateService.GetGateInstance(gateID: TGateID): TGateInstance?
 	return Instances[gateID]
 end
 
-function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecificationName, cframe: CFrame, visuals): TGateID
+function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecificationName, cframe: CFrame, visuals, attributes): TGateID
 	-- print("Instantiating " .. specificationName .. " with ID " .. nextID .. " at " .. tostring(cframe) .. " for " .. owner)
 	
 	local specification = Specifications[specificationName]
@@ -140,6 +140,7 @@ function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecifica
 	
 	visuals = visuals or {}
 	setmetatable(visuals, { __index = specification.DefaultVisuals} )
+	attributes = attributes or {}
 	
 	local model: Model = Models.new(specification.Nodes, visuals)
 	do
@@ -159,7 +160,7 @@ function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecifica
 		for _, output in ipairs(specification.Nodes.Outputs) do gate.Nodes.Outputs[output] = { }; gate.Nodes.Signals[output] = false end
 		for _, input in ipairs(specification.Nodes.Inputs) do gate.Nodes.Inputs[input] = { } end
 		gate.Attributes = {}
-		for name, specification in pairs(specification.AttributeData) do gate.Attributes[name] = specification.Default end
+		for name, specification in pairs(specification.AttributeData) do gate.Attributes[name] = if attributes[name] then attributes[name] else specification.Default end
 		setmetatable(gate, { __index = specification } )
 	end
 	Instances[nextId] = gate
