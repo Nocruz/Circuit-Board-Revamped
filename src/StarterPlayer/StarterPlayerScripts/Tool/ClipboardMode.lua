@@ -172,7 +172,7 @@ local function rebuildPreviewGhosts()
 		return
 	end
 
-	local ghostPrefab = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Ghost")
+	local ghostPrefab = ReplicatedStorage:WaitForChild("Ghost")
 	if ghostPrefab == nil or not ghostPrefab:IsA("BasePart") then
 		return
 	end

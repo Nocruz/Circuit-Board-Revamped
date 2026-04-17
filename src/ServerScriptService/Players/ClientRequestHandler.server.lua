@@ -579,44 +579,70 @@ configureFunction.OnServerInvoke = function(player: Player, id: number, attribut
 	return true, nil
 end
 
--- ----------------------------- -------------- CLIPBOARD DRAFT ----------- -----------------------------
+-- ----------------------------- -------------- CLIPBOARD ----------- -----------------------------
 
-local clipboardHasSaveQuery = ensureRemoteFunction(queriesFolder, "ClipboardHasSave")
-clipboardHasSaveQuery.OnServerInvoke = function(player: Player): (boolean, boolean | string)
-	if isCooldowned(player) then
-		return false, "Too fast!"
-	end
-
-	setCooldown(player)
-	return true, ClipboardService.HasDraft(player.UserId)
-end
-
-local clipboardPreviewQuery = ensureRemoteFunction(queriesFolder, "ClipboardPreview")
-clipboardPreviewQuery.OnServerInvoke = function(player: Player): (boolean, string?, any?)
+local clipboardListQuery = ensureRemoteFunction(queriesFolder, "ClipboardList")
+clipboardListQuery.OnServerInvoke = function(player: Player): (boolean, string?, any?)
 	if isCooldowned(player) then
 		return false, "Too fast!", nil
 	end
 
 	setCooldown(player)
-	return ClipboardService.GetDraftPreview(player.UserId)
+	return ClipboardService.ListSaves(player.UserId)
+end
+
+local clipboardPreviewQuery = ensureRemoteFunction(queriesFolder, "ClipboardPreview")
+clipboardPreviewQuery.OnServerInvoke = function(player: Player, saveName: string): (boolean, string?, any?)
+	if isCooldowned(player) then
+		return false, "Too fast!", nil
+	end
+
+	if type(saveName) ~= "string" then
+		return false, "Invalid save name.", nil
+	end
+
+	setCooldown(player)
+	return ClipboardService.GetSavePreview(player.UserId, saveName)
 end
 
 local clipboardSaveFunction = ensureRemoteFunction(eventsFolder, "ClipboardSave")
-clipboardSaveFunction.OnServerInvoke = function(player: Player, gateIds: { number }): (boolean, string?)
+clipboardSaveFunction.OnServerInvoke = function(player: Player, saveName: string, gateIds: { number }): (boolean, string?, any?)
 	if isCooldowned(player) then
-		return false, "Too fast!"
+		return false, "Too fast!", nil
+	end
+
+	if type(saveName) ~= "string" or type(gateIds) ~= "table" then
+		return false, "Invalid clipboard save.", nil
 	end
 
 	setCooldown(player)
-	return ClipboardService.SaveDraft(player, gateIds)
+	return ClipboardService.SaveSelection(player, saveName, gateIds)
 end
 
 local clipboardLoadFunction = ensureRemoteFunction(eventsFolder, "ClipboardLoad")
-clipboardLoadFunction.OnServerInvoke = function(player: Player, anchorCFrame: CFrame): (boolean, string?)
+clipboardLoadFunction.OnServerInvoke = function(player: Player, saveName: string, anchorCFrame: CFrame): (boolean, string?)
 	if isCooldowned(player) then
 		return false, "Too fast!"
 	end
 
+	if type(saveName) ~= "string" or typeof(anchorCFrame) ~= "CFrame" then
+		return false, "Invalid clipboard load."
+	end
+
 	setCooldown(player)
-	return ClipboardService.LoadDraft(player, anchorCFrame)
+	return ClipboardService.LoadSave(player, saveName, anchorCFrame)
+end
+
+local clipboardDeleteFunction = ensureRemoteFunction(eventsFolder, "ClipboardDelete")
+clipboardDeleteFunction.OnServerInvoke = function(player: Player, saveName: string): (boolean, string?, any?)
+	if isCooldowned(player) then
+		return false, "Too fast!", nil
+	end
+
+	if type(saveName) ~= "string" then
+		return false, "Invalid save name.", nil
+	end
+
+	setCooldown(player)
+	return ClipboardService.DeleteSave(player, saveName)
 end

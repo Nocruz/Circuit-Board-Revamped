@@ -16,15 +16,15 @@ local clientFolder = ReplicatedStorage:WaitForChild("Client")
 local queriesFolder = clientFolder:WaitForChild("Queries")
 local eventsFolder = clientFolder:WaitForChild("Events")
 
-local clipboardHasSaveRemote = queriesFolder:WaitForChild("ClipboardHasSave") :: RemoteFunction
+local clipboardListRemote = queriesFolder:WaitForChild("ClipboardList") :: RemoteFunction
 local clipboardPreviewRemote = queriesFolder:WaitForChild("ClipboardPreview") :: RemoteFunction
 local clipboardSaveRemote = eventsFolder:WaitForChild("ClipboardSave") :: RemoteFunction
 local clipboardLoadRemote = eventsFolder:WaitForChild("ClipboardLoad") :: RemoteFunction
+local clipboardDeleteRemote = eventsFolder:WaitForChild("ClipboardDelete") :: RemoteFunction
 
 local Tool = script.Parent
 
 local deathConnection: RBXScriptConnection?
-local hasStoredSave = false
 local equipped = false
 
 local function disconnectDeathConnection()
@@ -34,17 +34,36 @@ local function disconnectDeathConnection()
 	end
 end
 
+local function normalizeSaveName(rawName: string): string
+	local stripped = rawName:gsub("[%c]", "")
+	return string.sub(stripped:match("^%s*(.-)%s*$") or "", 1, 32)
+end
+
 local function getIdleStatus(): string
 	if ClipboardMode.IsLoadPlacementArmed() then
-		return "Click a point to place the saved draft."
+		local selectedSave = ClipboardUI.GetSelectedSaveName()
+		if selectedSave then
+			return "Click a point to place '" .. selectedSave .. "'."
+		end
+		return "Click a point to place the selected save."
 	end
+
 	if ClipboardMode.IsDragging() then
 		return "Release to finish the selection box."
 	end
 
 	local selectionCount = ClipboardMode.GetSelectionCount()
+	local saveName = normalizeSaveName(ClipboardUI.GetSaveName())
+	local selectedSave = ClipboardUI.GetSelectedSaveName()
+
+	if selectionCount > 0 and saveName ~= "" then
+		return string.format("%d gates selected. Save as '%s' or choose a stored save to load.", selectionCount, saveName)
+	end
 	if selectionCount > 0 then
-		return string.format("%d gates selected. Save the draft or arm load placement.", selectionCount)
+		return string.format("%d gates selected. Enter a save name to store them.", selectionCount)
+	end
+	if selectedSave then
+		return "Selected save: '" .. selectedSave .. "'."
 	end
 	if ClipboardMode.HasSelectionBox() then
 		return "No gates were inside that box."
@@ -54,9 +73,18 @@ local function getIdleStatus(): string
 end
 
 local function syncUiState(customStatus: string?, isError: boolean?)
-	local canSave = ClipboardMode.GetSelectionCount() > 0 and not ClipboardMode.IsLoadPlacementArmed()
+	local saveName = normalizeSaveName(ClipboardUI.GetSaveName())
+	local selectedSave = ClipboardUI.GetSelectedSaveName()
+	local loadArmed = ClipboardMode.IsLoadPlacementArmed()
+
+	local canSave = ClipboardMode.GetSelectionCount() > 0 and saveName ~= "" and not loadArmed
+	local canLoad = selectedSave ~= nil and not loadArmed
+	local canErase = selectedSave ~= nil and not loadArmed
+
 	ClipboardUI.SetSaveEnabled(canSave)
-	ClipboardUI.SetLoadArmed(ClipboardMode.IsLoadPlacementArmed())
+	ClipboardUI.SetLoadEnabled(canLoad)
+	ClipboardUI.SetLoadArmed(loadArmed)
+	ClipboardUI.SetEraseEnabled(canErase)
 	ClipboardUI.SetStatus(customStatus or getIdleStatus(), isError)
 end
 
@@ -65,60 +93,109 @@ local function resetState(customStatus: string?)
 	syncUiState(customStatus)
 end
 
-local function refreshStoredDraft(): boolean
-	local success, result = clipboardHasSaveRemote:InvokeServer()
+local function refreshSaves(preferredSelection: string?)
+	local success, message, saves = clipboardListRemote:InvokeServer()
 	if not success then
-		hasStoredSave = false
-		syncUiState((result :: string?) or "Couldn't check clipboard draft state.", true)
+		syncUiState(message or "Couldn't refresh clipboard saves.", true)
 		return false
 	end
 
-	hasStoredSave = result == true
+	ClipboardUI.SetSaves(saves or {})
+	if preferredSelection then
+		for _, summary in ipairs(saves or {}) do
+			if summary.Title == preferredSelection then
+				ClipboardUI.SetSelectedSaveName(preferredSelection)
+				break
+			end
+		end
+	end
+	syncUiState()
 	return true
 end
 
-local function onSave()
+local function onSave(saveName: string)
+	local normalizedSaveName = normalizeSaveName(saveName)
 	local gateIds = ClipboardMode.GetSelectedGateIds()
+
+	if normalizedSaveName == "" then
+		syncUiState("Give the save a name first.", true)
+		return
+	end
 	if #gateIds == 0 then
 		syncUiState("Select at least one gate before saving.", true)
 		return
 	end
 
-	local success, message = clipboardSaveRemote:InvokeServer(gateIds)
+	local success, message, saves = clipboardSaveRemote:InvokeServer(normalizedSaveName, gateIds)
 	if not success then
-		MessageService.SendMessage(message or "Failed to save clipboard draft.")
-		syncUiState(message or "Failed to save clipboard draft.", true)
+		MessageService.SendMessage(message or "Failed to save clipboard build.")
+		syncUiState(message or "Failed to save clipboard build.", true)
 		return
 	end
 
-	hasStoredSave = true
-	syncUiState(string.format("Saved draft with %d gates.", #gateIds))
+	ClipboardUI.SetSaves(saves or {})
+	ClipboardUI.SetSelectedSaveName(normalizedSaveName)
+	syncUiState("Saved '" .. normalizedSaveName .. "'.")
 end
 
-local function onLoad()
+local function onLoad(saveName: string)
 	if ClipboardMode.IsLoadPlacementArmed() then
 		ClipboardMode.CancelLoadPlacement()
 		syncUiState()
 		return
 	end
 
-	if not hasStoredSave then
-		ClipboardUI.FlashLoadUnavailable()
-		syncUiState("Save a draft before loading it.", true)
+	local normalizedSaveName = normalizeSaveName(saveName)
+	if normalizedSaveName == "" then
+		syncUiState("Pick a save first.", true)
 		return
 	end
 
-	local success, message, previewData = clipboardPreviewRemote:InvokeServer()
+	local success, message, previewData = clipboardPreviewRemote:InvokeServer(normalizedSaveName)
 	if not success then
-		if message == "No clipboard draft has been saved yet." then
-			hasStoredSave = false
-			ClipboardUI.FlashLoadUnavailable()
-		end
-		syncUiState(message or "Couldn't build clipboard preview.", true)
+		MessageService.SendMessage(message or "Couldn't preview that save.")
+		syncUiState(message or "Couldn't preview that save.", true)
 		return
 	end
 
+	ClipboardUI.SetSelectedSaveName(normalizedSaveName)
 	ClipboardMode.ArmLoadPlacement(previewData)
+	syncUiState()
+end
+
+local function onErase(saveName: string)
+	local normalizedSaveName = normalizeSaveName(saveName)
+	if normalizedSaveName == "" then
+		syncUiState("Pick a save first.", true)
+		return
+	end
+
+	if ClipboardMode.IsLoadPlacementArmed() then
+		ClipboardMode.CancelLoadPlacement()
+	end
+
+	local success, message, saves = clipboardDeleteRemote:InvokeServer(normalizedSaveName)
+	if not success then
+		MessageService.SendMessage(message or "Couldn't erase that save.")
+		syncUiState(message or "Couldn't erase that save.", true)
+		return
+	end
+
+	ClipboardUI.SetSaves(saves or {})
+	ClipboardUI.SetSelectedSaveName(nil)
+	syncUiState("Erased '" .. normalizedSaveName .. "'.")
+end
+
+local function onSelectionChanged(saveName: string?)
+	if ClipboardMode.IsLoadPlacementArmed() then
+		ClipboardMode.CancelLoadPlacement()
+	end
+
+	ClipboardUI.SetSelectedSaveName(saveName)
+	syncUiState()
+end
+
+local function onSaveNameChanged(_saveName: string)
 	syncUiState()
 end
 
@@ -131,7 +208,7 @@ local function bindDeathReset(character: Model)
 	end
 
 	deathConnection = humanoid.Died:Connect(function()
-		resetState("Clipboard draft reset.")
+		resetState("Clipboard selection reset.")
 	end)
 end
 
@@ -141,6 +218,9 @@ local function onEquipped()
 	ClipboardUI.Open({
 		OnSave = onSave,
 		OnLoad = onLoad,
+		OnErase = onErase,
+		OnSelectionChanged = onSelectionChanged,
+		OnSaveNameChanged = onSaveNameChanged,
 	})
 
 	local character = player.Character
@@ -149,7 +229,7 @@ local function onEquipped()
 	end
 
 	resetState()
-	refreshStoredDraft()
+	refreshSaves()
 end
 
 local function onUnequipped()
@@ -165,26 +245,29 @@ local function onActivated()
 	end
 
 	if ClipboardMode.IsLoadPlacementArmed() then
+		local selectedSave = ClipboardUI.GetSelectedSaveName()
+		if selectedSave == nil then
+			syncUiState("Pick a save first.", true)
+			return
+		end
+
 		local hitPosition = PointerService.HitPosition
 		if hitPosition == nil then
-			MessageService.SendMessage("Point at a valid spot to place the saved draft.")
-			syncUiState("Point at a valid spot to place the saved draft.", true)
+			MessageService.SendMessage("Point at a valid spot to place the saved build.")
+			syncUiState("Point at a valid spot to place the saved build.", true)
 			return
 		end
 
 		local anchorCFrame = GridService.fromCFrame(CFrame.new(hitPosition))._cframe
-		local success, message = clipboardLoadRemote:InvokeServer(anchorCFrame)
+		local success, message = clipboardLoadRemote:InvokeServer(selectedSave, anchorCFrame)
 		resetState()
 		if not success then
-			MessageService.SendMessage(message or "Failed to load clipboard draft.")
-			if message == "No clipboard draft has been saved yet." then
-				hasStoredSave = false
-			end
-			syncUiState(message or "Failed to load clipboard draft.", true)
+			MessageService.SendMessage(message or "Failed to load clipboard save.")
+			syncUiState(message or "Failed to load clipboard save.", true)
 			return
 		end
 
-		syncUiState("Loaded the saved draft at the clicked point.")
+		syncUiState("Loaded '" .. selectedSave .. "' at the clicked point.")
 		return
 	end
 
