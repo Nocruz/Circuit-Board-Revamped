@@ -259,7 +259,8 @@ local function onActivated()
 		end
 
 		local anchorCFrame = GridService.fromCFrame(CFrame.new(hitPosition))._cframe
-		local success, message = clipboardLoadRemote:InvokeServer(selectedSave, anchorCFrame)
+		local rotatedAnchor = anchorCFrame * ClipboardMode.getRotationCFrame() -- rotates in anchor's local space
+		local success, message = clipboardLoadRemote:InvokeServer(selectedSave, rotatedAnchor)
 		resetState()
 		if not success then
 			MessageService.SendMessage(message or "Failed to load clipboard save.")

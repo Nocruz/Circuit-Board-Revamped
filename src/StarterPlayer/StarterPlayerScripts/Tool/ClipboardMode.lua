@@ -1,7 +1,7 @@
 --!strict
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterPlayerScripts = game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts")
 
@@ -51,6 +51,9 @@ local selectedGateIds: { number } = {}
 local previewFolder: Folder?
 local previewGhosts: { BasePart } = {}
 local previewData: TPreviewData?
+
+local rotationSteps = 0
+local inputConnection: RBXScriptConnection?
 
 local anchorPoint: Vector3?
 local lockedPoint: Vector3?
@@ -211,16 +214,24 @@ local function updatePreviewVisual()
 		return
 	end
 
+	-- compute anchor and base as before (grid-aligned)
 	local anchorCFrame = GridService.fromCFrame(CFrame.new(hitPosition))._cframe
 	local baseCFrame = deserializeCFrame(previewData.BaseCFrame)
 	local translation = anchorCFrame.Position - baseCFrame.Position
 	local offsetCFrame = CFrame.new(translation)
 
+	-- rotation about the anchor's local Y axis
+	local rot = ClipboardMode.getRotationCFrame() -- rotation relative to anchor's local axes
+	local rotateAroundAnchor = anchorCFrame * rot * anchorCFrame:Inverse()
+
+	-- apply rotation-around-anchor to each ghost
 	for index, gatePreview in ipairs(previewData.Gates) do
-		local ghost = previewGhosts[index]
-		if ghost then
-			ghost:PivotTo(offsetCFrame * deserializeCFrame(gatePreview.CFrame))
-		end
+    local ghost = previewGhosts[index]
+    if ghost then
+      local gateLocal = deserializeCFrame(gatePreview.CFrame)
+      local worldCFrame = offsetCFrame * gateLocal
+      ghost:PivotTo(rotateAroundAnchor * worldCFrame)
+    end
 	end
 end
 
@@ -301,6 +312,11 @@ local function rebuildSelection()
 	end
 end
 
+local function rotateSteps(delta)
+	rotationSteps = (rotationSteps + delta) % 4
+	updateVisuals()
+end
+
 function ClipboardMode.Start()
 	if selectionPart ~= nil then
 		return
@@ -331,6 +347,18 @@ function ClipboardMode.Start()
 	selectionOutline.Parent = playerGui
 
 	renderConnection = RunService.RenderStepped:Connect(updateVisuals)
+	if not inputConnection then
+    inputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	    if gameProcessed then return end
+	    if not loadPlacementArmed then return end
+
+	    if input.KeyCode == Enum.KeyCode.Q then
+        rotateSteps(-1)
+	    elseif input.KeyCode == Enum.KeyCode.E then
+        rotateSteps(1)
+	    end
+    end)
+	end
 	updateVisuals()
 end
 
@@ -338,6 +366,11 @@ function ClipboardMode.Stop()
 	if renderConnection then
 		renderConnection:Disconnect()
 		renderConnection = nil
+	end
+
+	if inputConnection then
+	    inputConnection:Disconnect()
+	    inputConnection = nil
 	end
 
 	clearHighlights()
@@ -371,6 +404,7 @@ function ClipboardMode.Reset()
 	dragging = false
 	loadPlacementArmed = false
 	previewData = nil
+	ClipboardMode.ResetRotation()
 	clearHighlights()
 	clearPreviewGhosts()
 	updateVisuals()
@@ -419,6 +453,27 @@ function ClipboardMode.EndDrag(): (boolean, string?)
 	return true, nil
 end
 
+function ClipboardMode.RotateClockwise()
+  rotateSteps(1)
+end
+
+function ClipboardMode.RotateCounterClockwise()
+  rotateSteps(-1)
+end
+
+function ClipboardMode.GetRotationSteps(): number
+  return rotationSteps
+end
+
+function ClipboardMode.ResetRotation()
+  rotationSteps = 0
+  updateVisuals()
+end
+
+function ClipboardMode.getRotationCFrame()
+	return CFrame.Angles(0, math.rad(90 * rotationSteps), 0)
+end
+
 function ClipboardMode.ArmLoadPlacement(newPreviewData: TPreviewData?)
 	loadPlacementArmed = true
 	anchorPoint = nil
@@ -436,6 +491,7 @@ end
 function ClipboardMode.CancelLoadPlacement()
 	loadPlacementArmed = false
 	previewData = nil
+	ClipboardMode.ResetRotation()
 	clearPreviewGhosts()
 	updateVisuals()
 end

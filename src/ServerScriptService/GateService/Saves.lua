@@ -283,25 +283,32 @@ function SaveManager.Load(saveTable, owner, opts)
     for oldId in pairs(saveTable.Gates) do table.insert(oldIds, oldId) end
     table.sort(oldIds) -- deterministic order for instantiation
 
-    local transformCFrame = CFrame.new()
-    if hasAnchor then
-        if saveTable.BaseCFrame then
-            local basePosition = deserializeCFrame(saveTable.BaseCFrame).Position
-            transformCFrame = CFrame.new(anchorCFrame.Position - basePosition)
-        else
-            transformCFrame = CFrame.new(anchorCFrame.Position)
-        end
+    -- Calculate the base pivot point (position only, stripping any accidental base rotation)
+    local basePivot = CFrame.new()
+    if hasAnchor and saveTable.BaseCFrame then
+        local basePosition = deserializeCFrame(saveTable.BaseCFrame).Position
+        basePivot = CFrame.new(basePosition)
     end
 
     -- Instantiate in batches
     local function instantiateOne(oldId, entry)
-        local cframe = transformCFrame * deserializeCFrame(entry.CFrame)
+        local gateCFrame = deserializeCFrame(entry.CFrame)
+        local finalCFrame = gateCFrame
+        
+        if hasAnchor then
+            -- 1. Get the gate's offset relative to the original save's base position
+            local relativeOffset = basePivot:Inverse() * gateCFrame
+            -- 2. Apply this offset to the new anchor (which preserves the client's rotation)
+            finalCFrame = anchorCFrame * relativeOffset
+        end
+
         local visuals = entry.Visuals or {}
         local attributes = entry.Attributes or {}
-        -- Call Instantiate with suppressInitialPropagate = true (see note at top)
+        -- Call Instantiate with suppressInitialPropagate = true
         local ok, newIdOrErr = pcall(function()
-            return GateService.Instantiate(owner, entry.Specification, cframe, visuals, attributes)
+            return GateService.Instantiate(owner, entry.Specification, finalCFrame, visuals, attributes)
         end)
+        
         if not ok then
             return false, tostring(newIdOrErr)
         end
