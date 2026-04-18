@@ -121,7 +121,7 @@ local function _processGate(gateID, payload, forcedDepth)
                 PropagateFromOutput(gateID, outputName, context.Depth)
                 local wires = Connections.GetOutgoing(gateID, outputName)
                 for _, wire in ipairs(wires) do
-                    VisualOptimizer.Register(wire, { Color = ColorSequence.new(if currentSignal then Color3.new(0.9, 0.9, 1) else Color3.new(0, 0, 0.1)) })
+                    VisualOptimizer.Register(wire, { Color = ColorSequence.new(if Signals.toBoolean(currentSignal) then Color3.new(0.9, 0.9, 1) else Color3.new(0, 0, 0.1)) })
                 end
             end
         end

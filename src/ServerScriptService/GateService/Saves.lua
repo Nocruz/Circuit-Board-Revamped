@@ -1,23 +1,3 @@
---[[ Saves
-
-Data = {
-  Owner = { Name = PlayerName, Id = UserID }
-  SaveName = "ExampleName"
-  Timestamp = XXXX
-  Gates = {
-    [Id] = {
-      Specification = "NOT" -- Could be any string. E.g. "AND", "OR", "CLOCK", "DELAY"
-      Visuals = { } -- This holds visual Overrides (Can be empty). Visuals are structured using TVisual type
-      Attributes = { } -- This hold attribute values. Should be on par to the Specification.VisualData in GateService.lua
-      CFrame = {}
-    }
-  }
-  Connections = {
-    { fromGate = Id, toGate = Id, fromNode = Name, toNode = Name, timestamp = XXXX } -- Now connections have timestamps. To ensure Atomicity gates will be wired in the same order the originals where
-  }
-}
-
-]]
 -- SaveManager.lua
 -- Save / Load subgraphs of gates (serializable table format)
 -- Features:
@@ -130,10 +110,11 @@ local function computeBoundingBox(gates)
         -- no gates
         return { Position = serializeVector3(Vector3.new()), Size = serializeVector3(Vector3.new()) }
     end
+    minX -= 1; minZ -= 1; maxX += 1; maxY += 1; maxZ += 1
     local minV = Vector3.new(minX, minY, minZ)
     local maxV = Vector3.new(maxX, maxY, maxZ)
-    local center = (minV + maxV) * 0.5
     local size = maxV - minV
+    local center = size * 0.5
     return { Position = serializeVector3(center), Size = serializeVector3(size) }
 end
 
