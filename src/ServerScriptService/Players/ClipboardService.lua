@@ -3,6 +3,7 @@
 local DataStoreService = game:GetService("DataStoreService")
 local ServerScriptService = game:GetService("ServerScriptService")
 
+local Safezones = require(ServerScriptService.Players.Safezones)
 local GateService = require(ServerScriptService.GateService)
 local SaveManager = require(ServerScriptService.GateService.Saves)
 local PermissionService = require(ServerScriptService.Players.PermissionService)
@@ -43,20 +44,32 @@ local function isFiniteNumber(value: any): boolean
 	return type(value) == "number" and value == value and value > -math.huge and value < math.huge
 end
 
+local function tableToVector(table: { X: number, Y: number, Z: number }): Vector3
+	return Vector3.new(table.X, table.Y, table.Z)
+end
+
+local function tableToCFrame(t)
+    if not t or not t.Position then return CFrame.new() end
+    local p = tableToVector(t.Position)
+    if t.R00 == nil then
+        return CFrame.new(p)
+    end
+
+    return CFrame.new(
+        p.X, p.Y, p.Z,
+        t.R00, t.R01, t.R02,
+        t.R10, t.R11, t.R12,
+        t.R20, t.R21, t.R22
+    )
+end
+
 local function validateAnchorCFrame(anchorCFrame: CFrame): (boolean, string?)
 	if typeof(anchorCFrame) ~= "CFrame" then
 		return false, "Invalid load position."
 	end
 
-	local position = anchorCFrame.Position
-	if position.X ~= position.X or position.Y ~= position.Y or position.Z ~= position.Z then
-		return false, "Invalid load position."
-	end
-	if position.Magnitude > 1000 then
-		return false, "That load position is too far away."
-	end
-	if position.Y < -5 then
-		return false, "That load position is too low."
+	if not Safezones.IsValidPlacement(anchorCFrame) then
+		return false, "Invalid placement"
 	end
 
 	return true, nil
@@ -383,6 +396,29 @@ function ClipboardService.LoadSave(player: Player, rawSaveName: any, anchorCFram
 	local decodedSuccess, decodedMessage, saveTable = getDecodedSave(playerSaves, rawSaveName)
 	if not decodedSuccess or saveTable == nil then
 		return false, decodedMessage
+	end
+
+	do -- Testing stuff
+		local saveCFrame = CFrame.new(tableToVector(saveTable.BoxPosition))
+		
+    local basePosition = tableToCFrame(saveTable.BaseCFrame).Position
+    local basePivot = CFrame.new(basePosition)
+
+    -- 1. Get the save's offset relative to the original save's base position
+    local relativeOffset = basePivot:Inverse() * saveCFrame
+    -- 2. Apply this offset to the new anchor (which preserves the client's rotation)
+    local finalCFrame = anchorCFrame * relativeOffset
+
+		local Box1 = Instance.new("Part")
+		Box1.Anchored = true
+		Box1.Size = Vector3.one
+		Box1.Name = "anchorCFrame"
+		Box1.Parent = workspace
+		Box1.CFrame = finalCFrame
+		
+		if not Safezones.IsValidBoxPlacement(saveCFrame, tableToVector(saveTable.BoxSize)) then
+			return false, "Invalid placement"
+		end
 	end
 
 	local loadSuccess, loadResult = SaveManager.Load(saveTable, player.UserId, {

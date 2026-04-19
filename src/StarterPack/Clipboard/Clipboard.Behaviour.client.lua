@@ -21,6 +21,7 @@ local clipboardPreviewRemote = queriesFolder:WaitForChild("ClipboardPreview") ::
 local clipboardSaveRemote = eventsFolder:WaitForChild("ClipboardSave") :: RemoteFunction
 local clipboardLoadRemote = eventsFolder:WaitForChild("ClipboardLoad") :: RemoteFunction
 local clipboardDeleteRemote = eventsFolder:WaitForChild("ClipboardDelete") :: RemoteFunction
+local destroyAllRemote = eventsFolder:WaitForChild("DestroyAll") :: RemoteFunction
 
 local Tool = script.Parent
 
@@ -186,6 +187,21 @@ local function onErase(saveName: string)
 	syncUiState("Erased '" .. normalizedSaveName .. "'.")
 end
 
+local function onDestroyAll()
+	if ClipboardMode.IsLoadPlacementArmed() then
+		ClipboardMode.CancelLoadPlacement()
+	end
+	
+	local success, message = destroyAllRemote:InvokeServer()
+	if not success then
+		MessageService.SendMessage(message or "Failed to destroy all gates.")
+		syncUiState(message or "Failed to destroy all gates.", true)
+		return
+	end
+	
+	resetState("All gates destroyed.")
+end
+
 local function onSelectionChanged(saveName: string?)
 	if ClipboardMode.IsLoadPlacementArmed() then
 		ClipboardMode.CancelLoadPlacement()
@@ -221,6 +237,7 @@ local function onEquipped()
 		OnErase = onErase,
 		OnSelectionChanged = onSelectionChanged,
 		OnSaveNameChanged = onSaveNameChanged,
+		OnDestroyAll = onDestroyAll,
 	})
 
 	local character = player.Character

@@ -304,7 +304,6 @@ function SaveManager.Load(saveTable, owner, opts)
 
         local visuals = entry.Visuals or {}
         local attributes = entry.Attributes or {}
-        -- Call Instantiate with suppressInitialPropagate = true
         local ok, newIdOrErr = pcall(function()
             return GateService.Instantiate(owner, entry.Specification, finalCFrame, visuals, attributes)
         end)

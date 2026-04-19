@@ -20,8 +20,12 @@ return {
     
     -- Rising edge: input goes from false -> true
     if inputBool and not self.Nodes.Signals["Output"] then
-      if not Updates.IsWakeupScheduled(self.Id, "DelayTimer") then
-        Updates.ScheduleWakeup(self.Id, self.Attributes.Delay, { Source = "DelayExpired" }, "DelayTimer")
+      if self.Attributes.Delay == 0 then
+        self.Nodes.Signals["Output"] = inputSignal.Raw
+      else
+        if not Updates.IsWakeupScheduled(self.Id, "DelayTimer") then
+          Updates.ScheduleWakeup(self.Id, self.Attributes.Delay, { Source = "DelayExpired" }, "DelayTimer")
+        end
       end
       
     -- Input is true and was already true: update output instantly

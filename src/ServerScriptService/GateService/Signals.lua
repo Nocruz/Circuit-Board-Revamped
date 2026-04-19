@@ -23,7 +23,7 @@ local Signals = {}
 function Signals.toBoolean(signal: TSignal): boolean
 	if type(signal) == "boolean" then return signal end
 	if type(signal) == "number"  then return signal ~= 0 end
-	if type(signal) == "string"  then return signal ~= "" and signal ~= "0" and signal:lower() ~= "false" end
+	if type(signal) == "string"  then return signal ~= "" and signal ~= "0" and signal ~= "false" end
 	
 	error("Invalid signal type. Must be string, number, or boolean.")
 end
@@ -31,7 +31,7 @@ end
 function Signals.toNumber(signal: TSignal): number
 	if type(signal) == "boolean" then return if signal then 1 else 0 end
 	if type(signal) == "number"  then return signal end
-	if type(signal) == "string"  then return tonumber(signal) or (signal:lower() == "false" and 0) or (signal:lower() == "true" and 1) or #signal end
+	if type(signal) == "string"  then return tonumber(signal) or (signal == "false" and 0) or (signal == "true" and 1) or #signal end
 	
 	error("Invalid signal type. Must be string, number, or boolean.")
 end
@@ -41,6 +41,13 @@ function Signals.toString(signal: TSignal): string
 end
 
 -- ----------------------------- ------------ COMPARISONS ------------- -----------------------------
+
+function Signals.EqualizeString(p1: TSignal): TSignal
+	assert(type(p1) == "string", "Signal was not a string")
+	if p1 == "false" or p1 == "true" or p1 == "" then return Signals.toBoolean(p1)
+	elseif tonumber(p1) ~= nil then return tonumber(p1) :: number
+	else return p1 end
+end
 
 -- Should work. Probably
 function Signals.equals(p1: TSignal, p2: TSignal): boolean
@@ -55,6 +62,9 @@ end
 -- 3. A number is as strong as its opposite
 -- 4. True == 1, False == 0
 function Signals.isStronger(s1: TSignal, s2: TSignal): boolean
+	if type(s1) == "string" then s1 = Signals.EqualizeString(s1) end
+	if type(s2) == "string" then s2 = Signals.EqualizeString(s2) end
+	
 	if type(s1) == "string" and type(s2) == "string" then return #s1 > #s2 end
 	if type(s1) == "string" and type(s2) ~= "string" then return true end
 	if type(s1) ~= "string" and type(s2) == "string" then return false end

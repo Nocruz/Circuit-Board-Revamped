@@ -21,13 +21,22 @@ return {
     
     -- Rising edge: input goes from false -> true
     if inputBool and not self.Nodes.Signals["Output"] then
-      if not Updates.IsWakeupScheduled(self.Id, "DelayTimer") then
-        Updates.ScheduleWakeup(self.Id, self.Attributes.Delay, { Source = "DelayExpired" }, "DelayTimer")
+      if self.Attributes.Delay == 0 then
+        self.Nodes.Signals["Output"] = inputSignal.Raw
+        if not Updates.IsWakeupScheduled(self.Id, "DurationTimer") then
+          Updates.ScheduleWakeup(self.Id, self.Attributes.Duration, { Source = "DurationExpired" }, "DurationExpired")
+        end
+      else
+        if not Updates.IsWakeupScheduled(self.Id, "DelayTimer") then
+          Updates.ScheduleWakeup(self.Id, self.Attributes.Delay, { Source = "DelayExpired" }, "DelayTimer")
+        end
       end
     
     -- Input turned false before gate turned on: cancel timer and output false immediately
     elseif not inputBool and not self.Nodes.Signals["Output"] then
-      Updates.CancelAllWakeups(self.Id)
+      if Updates.IsWakeupScheduled(self.Id, "DelayTimer") then
+        Updates.CancelWakeup(self.Id, "DelayTimer")
+      end
       self.Nodes.Signals["Output"] = false
     end
     

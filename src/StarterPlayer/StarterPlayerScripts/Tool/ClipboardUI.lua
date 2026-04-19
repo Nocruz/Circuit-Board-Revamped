@@ -15,6 +15,7 @@ type TCallbacks = {
 	OnErase: (saveName: string) -> (),
 	OnSelectionChanged: (saveName: string?) -> (),
 	OnSaveNameChanged: (saveName: string) -> (),
+	OnDestroyAll: () -> (),
 }
 
 local ClipboardUI = {}
@@ -24,6 +25,7 @@ local statusLabel: TextLabel?
 local saveButton: TextButton?
 local loadButton: TextButton?
 local eraseButton: TextButton?
+local destroyAllButton: TextButton?
 local saveNameBox: TextBox?
 local listFrame: ScrollingFrame?
 local callbacks: TCallbacks?
@@ -48,6 +50,7 @@ local COLORS = {
 	Danger = Color3.fromRGB(215, 66, 66),
 	DangerDisabled = Color3.fromRGB(100, 58, 58),
 	Error = Color3.fromRGB(222, 90, 90),
+	BrightRed = Color3.fromRGB(255, 50, 50),
 }
 
 local function create(className: string, props: { [string]: any }, children: { Instance }?): Instance
@@ -372,6 +375,29 @@ function ClipboardUI.Open(newCallbacks: TCallbacks)
 		Parent = panel,
 	}) :: TextLabel
 
+	-- NEW Destroy All Gates Button
+	destroyAllButton = create("TextButton", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -18, 0.5, 0),
+		Size = UDim2.fromOffset(160, 44),
+		BackgroundColor3 = COLORS.BrightRed,
+		BorderSizePixel = 0,
+		Font = Enum.Font.GothamBold,
+		Text = "Destroy All Gates",
+		TextColor3 = COLORS.Text,
+		TextSize = 14,
+		Parent = activeGui,
+	}, {
+		create("UICorner", { CornerRadius = UDim.new(0, 10) }),
+		create("UIStroke", { Color = Color3.fromRGB(150, 20, 20), Thickness = 2 }),
+	}) :: TextButton
+
+	destroyAllButton.MouseButton1Click:Connect(function()
+		if callbacks then
+			callbacks.OnDestroyAll()
+		end
+	end)
+
 	applySaveButtonState()
 	applyLoadButtonState()
 	applyEraseButtonState()
@@ -470,6 +496,7 @@ function ClipboardUI.Close()
 	saveButton = nil
 	loadButton = nil
 	eraseButton = nil
+	destroyAllButton = nil
 	saveNameBox = nil
 	listFrame = nil
 	callbacks = nil

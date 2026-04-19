@@ -221,6 +221,7 @@ function GateService.Connect(fromID: TGateID, toID: TGateID, Nodes: { from: TNod
 	local wire = Connections.new(fromID, toID, fromGate.Model.Nodes[Nodes.from], toGate.Model.Nodes[Nodes.to])
 	Connections.UpdateCFrame(wire)
 	
+	Updates.RegisterVisualChange(wire, { Color = ColorSequence.new(if Signals.toBoolean(fromGate.Nodes.Signals[Nodes.from]) then Color3.new(0.9, 0.9, 1) else Color3.new(0, 0, 0.1)) })
 	Updates.Propagate(toID)
 end
 

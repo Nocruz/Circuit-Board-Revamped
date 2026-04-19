@@ -10,6 +10,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
+local Safezones = require(ServerScriptService.Players.Safezones)
 local PermissionService = require(ServerScriptService.Players.PermissionService)
 local ClipboardService = require(ServerScriptService.Players.ClipboardService)
 local GateService = require(ServerScriptService.GateService)
@@ -19,9 +20,15 @@ local clientFolder = ReplicatedStorage:WaitForChild("Client")
 local queriesFolder = clientFolder:WaitForChild("Queries")
 local eventsFolder = clientFolder:WaitForChild("Events")
 
+local gates = workspace:WaitForChild("Gates")
+
 -- Cooldown state
 local PlayerCooldowns: { [number]: true } = {}
 local ACTION_COOLDOWN = 0.05 -- seconds
+
+local function isAdmin(player: Player)
+	return player.UserId == 159768840
+end
 
 local function ensureRemoteFunction(parent: Instance, name: string): RemoteFunction
 	local existing = parent:FindFirstChild(name)
@@ -42,6 +49,7 @@ end
 -- ----------------------------- ------------ HELPER METHODS ----------- -----------------------------
 
 local function isCooldowned(player: Player): boolean
+	if isAdmin(player) then return false end
 	return PlayerCooldowns[player.UserId] ~= nil
 end
 
@@ -190,10 +198,11 @@ spawnFunction.OnServerInvoke = function(player: Player, id: number, cframe: CFra
 		return false, "Invalid parameters! Check with a mod"
 	else
 		-- Validate CFrame
-		local p = cframe.Position
-		if p.Magnitude > 1000 then warn("Failure! 'cframe' parameter is too far from origin"); return false, "Too far from middle" end
-		if p.Y < -5 then warn("Failure! 'cframe' parameter is too low"); return false, "Too low" end
-		if p.X ~= p.X or p.Y ~= p.Y or p.Z ~= p.Z then warn("Failure! 'cframe' parameter has NaN values"); return false, "Invalid position" end
+		if cframe.Position.X ~= cframe.Position.X or cframe.Position.Y ~= cframe.Position.Y or cframe.Position.Z ~= cframe.Position.Z then warn("Failure! 'cframe' parameter has NaN values"); return false, "Invalid position" end
+		if not Safezones.IsValidPlacement(GridService.fromCFrame(cframe)._cframe) then
+			warn("Failure! 'cframe' did not pass validity")
+			return false, "Invalid placement"
+		end
 	end
 	
 	local gate = GateService.GetGateInstance(id)
@@ -209,7 +218,7 @@ spawnFunction.OnServerInvoke = function(player: Player, id: number, cframe: CFra
 	end
 	
 	-- Spawn the new gate via GateService
-	local newGateId = GateService.Instantiate(player.UserId, gate.Name, cframe, gate.Visuals)
+	local newGateId = GateService.Instantiate(player.UserId, gate.Name, cframe, gate.Visuals, gate.Attributes)
 	print("Gate spawned with ID " .. newGateId)
 	
 	return true, nil
@@ -243,10 +252,11 @@ moveFunction.OnServerInvoke = function(player: Player, id: number, cframe: CFram
 		return false, "Invalid parameters! Check with a mod"
 	else
 		-- Validate CFrame
-		local p = cframe.Position
-		if p.Magnitude > 1000 then warn("Failure! 'cframe' parameter is too far from origin"); return false, "Too far from middle" end
-		if p.Y < -5 then warn("Failure! 'cframe' parameter is too low"); return false, "Too low" end
-		if p.X ~= p.X or p.Y ~= p.Y or p.Z ~= p.Z then warn("Failure! 'cframe' parameter has NaN values"); return false, "Invalid position" end
+		if cframe.Position.X ~= cframe.Position.X or cframe.Position.Y ~= cframe.Position.Y or cframe.Position.Z ~= cframe.Position.Z then warn("Failure! 'cframe' parameter has NaN values"); return false, "Invalid position" end
+		if not Safezones.IsValidPlacement(GridService.fromCFrame(cframe)._cframe) then
+			warn("Failure! 'cframe' did not pass validity")
+			return false, "Invalid placement"
+		end
 	end
 
 	local gate = GateService.GetGateInstance(id)
@@ -306,6 +316,33 @@ destroyFunction.OnServerInvoke = function(player: Player, id: number): (boolean,
 
 	GateService.Destroy(id)
 	print("Gate " .. id .. " destroyed")
+	
+	return true, nil
+end
+
+local destroyAllFunction = ReplicatedStorage.Client.Events:FindFirstChild("DestroyAll")
+destroyAllFunction.OnServerInvoke = function(player: Player): (boolean, string?)
+	if isCooldowned(player) then 
+		print(player.Name .. " tried destroying all its gates, but is still in cooldown")
+		return false, "Too fast!"
+	end
+
+	setCooldown(player)
+	print(player.Name .. " is requesting to destroy all its gates...")
+
+	local folder = gates:FindFirstChild(tostring(player.UserId))
+	if not folder then
+		print(player.Name .. " has no Gates folder")
+		return false, "Player had no Gates folder"
+	end
+
+	for _, gate in ipairs(folder:GetChildren()) do
+		if gate:GetAttribute("GateId") then
+			GateService.Destroy(gate:GetAttribute("GateId"))
+		end
+	end
+	
+	print("Player " .. player.UserId .. " destroyed all its gates!")
 	
 	return true, nil
 end
@@ -536,10 +573,10 @@ end
 
 local configureFunction = ReplicatedStorage.Client.Events:FindFirstChild("Configure")
 configureFunction.OnServerInvoke = function(player: Player, id: number, attribute: string, value: any): (boolean, string?)
-	if isCooldowned(player) then 
-		print(player.Name .. " tried configuring a gate, but is still in cooldown")
-		return false, "Too fast!"
-	end
+	-- if isCooldowned(player) then 
+	-- 	print(player.Name .. " tried configuring a gate, but is still in cooldown")
+	-- 	return false, "Too fast!"
+	-- end
 
 	setCooldown(player)
 	print(player.Name .. " is requesting to configure a gate...")

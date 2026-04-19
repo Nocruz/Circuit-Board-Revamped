@@ -12,6 +12,6 @@ return {
 
   Process = function(self)
     local value: string = self:ReadInput("Input").AsString()
-    Updates.RegisterVisualChange(self.Label, { Text = if value:lower() == "false" then "" else value })
+    Updates.RegisterVisualChange(self.Label, { Text = if value == "false" then "" else value })
   end
 }

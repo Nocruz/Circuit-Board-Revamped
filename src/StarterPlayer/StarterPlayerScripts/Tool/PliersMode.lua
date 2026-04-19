@@ -11,6 +11,11 @@ local LocalServices = StarterPlayerScripts.Services
 
 local PointerService = require(LocalServices.PointerService)
 
+-- References
+local Wires = workspace:WaitForChild("Wires")
+local wireTempFolder: Folder?
+local wireChildConnection: RBXScriptConnection?
+
 -- Debugging
 local Logger = require(ReplicatedStorage.Services.LoggerService)
 local log = Logger.new("PliersMode")
@@ -32,6 +37,15 @@ local lastColor: ColorSequence? = nil
 local PliersMode = { }
 
 -- ----------------------------- --------- HELPER METHODS -------- ------------------------------
+
+local function getWireTempFolder(): Folder
+	if not wireTempFolder then
+		wireTempFolder = Instance.new("Folder")
+		wireTempFolder.Name = "wireTempFolder"
+		wireTempFolder.Parent = workspace
+	end
+	return wireTempFolder
+end
 
 local function isWire(instance: Instance?): (boolean, Beam?)
 	if instance and instance:IsA("Part") and instance.Name == "Hitbox" then
@@ -104,7 +118,10 @@ function PliersMode.Start()
 	if hoverConnection then hoverConnection:Disconnect() end
 	hoverConnection = PointerService.OnHoverChanged:Connect(highlightHovered)
 	highlightHovered(PointerService.HoveredInstance, PointerService.HoveredGate)
-	
+
+	wireChildConnection = Wires.ChildAdded:Connect(function(child) child.Parent = wireTempFolder end)
+	for _, child in ipairs(Wires:GetChildren()) do child.Parent = getWireTempFolder() end
+
 	log.info("Started PliersMode")
 end
 
@@ -112,6 +129,8 @@ function PliersMode.Stop()
 	if redBox then hideHighlight() end
 	if hoverConnection then hoverConnection:Disconnect(); hoverConnection = nil end
 	
+	if wireChildConnection then wireChildConnection:Disconnect(); wireChildConnection = nil end
+	for _, child in ipairs(getWireTempFolder():GetChildren()) do child.Parent = Wires end
 	resetLastWire()
 	
 	lastWire = nil
