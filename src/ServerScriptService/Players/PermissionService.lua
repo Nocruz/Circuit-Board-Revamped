@@ -8,6 +8,10 @@
 export type ActionType = "Spawn" | "Move" | "Wire" | "Delete" | "Configure" | "Interact"
 local ACTIONS = { Spawn = true, Move = true, Wire = true, Delete = true, Configure = true, Interact = true, }
 
+local ADMIN_USERS: { [number]: true } = {
+	[159768840] = true,
+}
+
 export type PermissionMode = "Whitelist" | "Blacklist"
 
 export type PermissionData = { 
@@ -89,9 +93,14 @@ function PermissionService.isValidAction(action: string): boolean
 	return ACTIONS[action] or false
 end
 
+function PermissionService.isAdmin(userId: number): boolean
+	return ADMIN_USERS[userId] == true
+end
+
 function PermissionService.canPlayerDo(userId: number, ownerId: number, action: ActionType, objectType: string?): boolean
 	-- Server rules above all
 	if userId == 0 then return true end
+	if PermissionService.isAdmin(userId) then return true end
 	
 	local data = Registry[ownerId]
 	if not data then return false end

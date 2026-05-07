@@ -114,7 +114,7 @@ local function computeBoundingBox(gates)
     local minV = Vector3.new(minX, minY, minZ)
     local maxV = Vector3.new(maxX, maxY, maxZ)
     local size = maxV - minV
-    local center = size * 0.5
+    local center = (minV + maxV) * 0.5
     return { Position = serializeVector3(center), Size = serializeVector3(size) }
 end
 
@@ -198,7 +198,14 @@ function SaveManager.Save(gateIdArray, options)
 
     -- Compute bounding box
     local bbox = computeBoundingBox(gatesToComputeBBox)
-    save.BoxPosition = bbox.Position
+    local worldCenter = deserializeVector3(bbox.Position)
+    local basePivot = deserializeCFrame(save.BaseCFrame)
+
+    -- 2. Store the center RELATIVE to the base pivot
+    -- This handles both position and rotation of the anchor gate
+    local relativeCenter = basePivot:PointToObjectSpace(worldCenter)
+
+    save.BoxPosition = serializeVector3(relativeCenter)
     save.BoxSize = bbox.Size
 
     -- Collect connections (only between saved gates)

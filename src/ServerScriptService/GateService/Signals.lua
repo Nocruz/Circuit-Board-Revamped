@@ -42,12 +42,16 @@ end
 
 -- ----------------------------- ------------ COMPARISONS ------------- -----------------------------
 
-function Signals.EqualizeString(p1: TSignal): TSignal
-	assert(type(p1) == "string", "Signal was not a string")
-	if p1 == "false" or p1 == "true" or p1 == "" then return Signals.toBoolean(p1)
-	elseif tonumber(p1) ~= nil then return tonumber(p1) :: number
-	else return p1 end
+function Signals.EqualizeString(str: TSignal): TSignal
+	if type(str) == "string" then
+		if str == "false" or str == "" then return false end
+		if str == "true" then return true end
+		local num = tonumber(str)
+		if num and tostring(num) == str then return num end
+	end
+	return str
 end
+
 
 -- Should work. Probably
 function Signals.equals(p1: TSignal, p2: TSignal): boolean
@@ -62,8 +66,8 @@ end
 -- 3. A number is as strong as its opposite
 -- 4. True == 1, False == 0
 function Signals.isStronger(s1: TSignal, s2: TSignal): boolean
-	if type(s1) == "string" then s1 = Signals.EqualizeString(s1) end
-	if type(s2) == "string" then s2 = Signals.EqualizeString(s2) end
+	s1 = Signals.EqualizeString(s1)
+	s2 = Signals.EqualizeString(s2)
 	
 	if type(s1) == "string" and type(s2) == "string" then return #s1 > #s2 end
 	if type(s1) == "string" and type(s2) ~= "string" then return true end

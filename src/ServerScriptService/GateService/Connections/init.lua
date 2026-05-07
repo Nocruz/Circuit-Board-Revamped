@@ -116,6 +116,41 @@ function Connections.UpdateColor(wire: TWire, signal: Signals.TSignal)
 	wire.Color = ColorSequence.new(if isOn then COLOR_ON else COLOR_OFF)
 end
 
+function Connections.RebindGate(gateID: number, model: Model & { Nodes: Folder })
+	local nodes = model:FindFirstChild("Nodes")
+	assert(nodes and nodes:IsA("Folder"), "Gate model had no Nodes folder")
+
+	if Outgoing[gateID] then
+		for outputName, wires in pairs(Outgoing[gateID]) do
+			local fromNode = nodes:FindFirstChild(outputName)
+			assert(fromNode and fromNode:IsA("BasePart"), "Gate model is missing output node '" .. outputName .. "'")
+
+			local attachment = fromNode:FindFirstChildWhichIsA("Attachment")
+			assert(attachment, "Output node '" .. outputName .. "' had no wire attachment")
+
+			for _, wire in ipairs(wires) do
+				wire.Attachment0 = attachment
+				Connections.UpdateCFrame(wire)
+			end
+		end
+	end
+
+	if Incoming[gateID] then
+		for inputName, wires in pairs(Incoming[gateID]) do
+			local toNode = nodes:FindFirstChild(inputName)
+			assert(toNode and toNode:IsA("BasePart"), "Gate model is missing input node '" .. inputName .. "'")
+
+			local attachment = toNode:FindFirstChildWhichIsA("Attachment")
+			assert(attachment, "Input node '" .. inputName .. "' had no wire attachment")
+
+			for _, wire in ipairs(wires) do
+				wire.Attachment1 = attachment
+				Connections.UpdateCFrame(wire)
+			end
+		end
+	end
+end
+
 -- ----------------------------- --------------- UTILITY ----------------- ----------------------------
 
 function Connections.GetOutgoing(gateID, outputName)

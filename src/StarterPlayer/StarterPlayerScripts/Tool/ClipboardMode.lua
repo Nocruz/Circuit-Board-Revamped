@@ -168,6 +168,56 @@ local function hidePreviewGhosts()
 	end
 end
 
+-- Compute bounding box from preview data gates
+-- Returns: minX, minY, minZ, maxX, maxY, maxZ
+local function computePreviewBoundingBox(data: TPreviewData?): (number, number, number, number, number, number)
+	if data == nil or data.Gates == nil or #data.Gates == 0 then
+		return 0, 0, 0, 0, 0, 0
+	end
+
+	local first = true
+	local minX, minY, minZ, maxX, maxY, maxZ = 0, 0, 0, 0, 0, 0
+
+	for _, gatePreview in ipairs(data.Gates) do
+		local gateCFrame = deserializeCFrame(gatePreview.CFrame)
+		local pos = gateCFrame.Position
+
+		if first then
+			minX, minY, minZ = pos.X, pos.Y, pos.Z
+			maxX, maxY, maxZ = pos.X, pos.Y, pos.Z
+			first = false
+		else
+			if pos.X < minX then minX = pos.X end
+			if pos.Y < minY then minY = pos.Y end
+			if pos.Z < minZ then minZ = pos.Z end
+			if pos.X > maxX then maxX = pos.X end
+			if pos.Y > maxY then maxY = pos.Y end
+			if pos.Z > maxZ then maxZ = pos.Z end
+		end
+	end
+
+	return minX, minY, minZ, maxX, maxY, maxZ
+end
+
+-- Get the pivot offset from BaseCFrame to bottom-center of bounding box
+-- Returns: Vector3 offset (BaseCFrame.Position -> bottom-center pivot)
+local function getPivotOffset(data: TPreviewData?): Vector3
+	if data == nil then
+		return Vector3.new(0, 0, 0)
+	end
+
+	local baseCFrame = deserializeCFrame(data.BaseCFrame)
+	local minX, minY, minZ, maxX, maxY, maxZ = computePreviewBoundingBox(data)
+
+	-- Bottom-center pivot: (centerX, minY, centerZ)
+	local centerX = (minX + maxX) / 2
+	local centerZ = (minZ + maxZ) / 2
+	local bottomCenterPivot = Vector3.new(centerX, minY, centerZ)
+
+	-- Offset from BaseCFrame position to bottom-center
+	return bottomCenterPivot - baseCFrame.Position
+end
+
 local function rebuildPreviewGhosts()
 	clearPreviewGhosts()
 
@@ -217,7 +267,12 @@ local function updatePreviewVisual()
 	-- compute anchor and base as before (grid-aligned)
 	local anchorCFrame = GridService.fromCFrame(CFrame.new(hitPosition))._cframe
 	local baseCFrame = deserializeCFrame(previewData.BaseCFrame)
-	local translation = anchorCFrame.Position - baseCFrame.Position
+
+	-- Get the pivot offset (from BaseCFrame to bottom-center)
+	local pivotOffset = getPivotOffset(previewData)
+
+	-- Translation: position so bottom-center is at anchor
+	local translation = anchorCFrame.Position - baseCFrame.Position - pivotOffset
 	local offsetCFrame = CFrame.new(translation)
 
 	-- rotation about the anchor's local Y axis

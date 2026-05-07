@@ -35,7 +35,7 @@ return {
     -- Input turned false: cancel timers and output false immediately
     elseif not inputBool then
       Updates.CancelAllWakeups(self.Id)
-      self.Nodes.Signals["Output"] = false
+      self.Nodes.Signals["Output"] = inputSignal.Raw
     end
     
     -- Handle delayed wakeup

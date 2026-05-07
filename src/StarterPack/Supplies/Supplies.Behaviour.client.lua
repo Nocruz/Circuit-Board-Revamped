@@ -50,7 +50,10 @@ local function Deactivate()
 	
 	local context = DeactivationContext()
 	if context == "Valid" then
-		SpawnEvent:InvokeServer(gate:GetAttribute("GateId"), gate:GetPivot(), {})
+		local result, message = SpawnEvent:InvokeServer(gate:GetAttribute("GateId"), gate:GetPivot(), {})
+		if not result then
+			MessageService.SendMessage(message)
+		end
 	end	
 
 	gate:Destroy()

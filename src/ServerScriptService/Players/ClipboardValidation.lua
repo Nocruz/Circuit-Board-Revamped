@@ -7,7 +7,7 @@ local GateService = require(ServerScriptService.GateService)
 local ClipboardValidation = {}
 
 local MAX_SAVE_NAME_LENGTH = 32
-local MAX_GATES_PER_SAVE = 1000
+local MAX_GATES_PER_SAVE = 700
 local MAX_CONNECTIONS_PER_SAVE = 10000
 local MAX_RECURSION_DEPTH = 8
 

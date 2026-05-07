@@ -1,7 +1,4 @@
 --!strict
--- Requires and Services
-local ServerStorage = game:GetService("ServerStorage")
-
 -- Define types for our condition functions to give you nice autocompletion
 type ConditionFunction = (cframe: CFrame) -> boolean
 type BoxConditionFunction = (cframe: CFrame, size: Vector3) -> boolean
@@ -13,15 +10,15 @@ end
 local Safezones = {}
 
 -- Module State
-Safezones.Folder = ServerStorage:FindFirstChild("Safezones") :: Folder?
+Safezones.Folder = workspace:FindFirstChild("Safezones") :: Folder?
 Safezones.Conditions = {
 	function(cframe: CFrame) return isFiniteNumber(cframe.Position.X) and isFiniteNumber(cframe.Position.Y) and isFiniteNumber(cframe.Position.Z) end,
 	function(cframe: CFrame) return cframe.Position.Magnitude < 1000 end,
-	function(cframe: CFrame) return cframe.Position.Y >= 0 end
+	function(cframe: CFrame) return cframe.Position.Y > -0.5 end
 }
 Safezones.BoxConditions = {
 	function(cframe: CFrame, size: Vector3) return isFiniteNumber(cframe.Position.X) and isFiniteNumber(cframe.Position.Y) and isFiniteNumber(cframe.Position.Z) end,
-	function(cframe: CFrame, size: Vector3) return cframe.Position.Y - size.Y / 2 >= 0 end,
+	function(cframe: CFrame, size: Vector3) return cframe.Position.Y - size.Y / 2 > -0.5 end,
 }
 
 -- Reusable OverlapParams for spatial box queries
@@ -101,12 +98,6 @@ end
 
 -- Validates a Box placement
 function Safezones.IsValidBoxPlacement(cframe: CFrame, size: Vector3): boolean
-	local Box = Instance.new("Part")
-	Box.Anchored = true
-	Box.CFrame = cframe
-	Box.Size = size
-	Box.Parent = workspace
-	
 	-- 1. Fails if the box intersects a Safezone
 	if Safezones.IsBoxInSafezone(cframe, size) then
 		return false

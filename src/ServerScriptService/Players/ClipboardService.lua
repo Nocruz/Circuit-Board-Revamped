@@ -14,7 +14,6 @@ type TSaveSummary = {
 	Title: string,
 	GateCount: number,
 	WireCount: number,
-	UpdatedAt: number,
 }
 
 type TPreviewGate = {
@@ -32,35 +31,43 @@ type TRootSaves = { [string]: TPlayerSaves }
 
 local ClipboardService = {}
 
-local DATASTORE_NAME = "ClipboardSaves"
-local DATASTORE_KEY = "SAVE_BETA_0"
+local DATASTORE_NAME = "SAVE_BETA_1"
+local LEGACY_DATASTORE_NAME = "ClipboardSaves"
+local LEGACY_DATASTORE_KEY = "SAVE_BETA_0"
 local MAX_SAVES_PER_PLAYER = 24
 local MAX_SAVE_NAME_LENGTH = 32
+local MAX_GATES_PER_SAVE = 700
 local DATASTORE_ERROR_MESSAGE = "Clipboard data couldn't be reached right now."
 
 local ClipboardDataStore = DataStoreService:GetDataStore(DATASTORE_NAME)
+local LegacyClipboardDataStore = DataStoreService:GetDataStore(LEGACY_DATASTORE_NAME)
+local DATASTORE_RETRY_COUNT = 3
+local DATASTORE_RETRY_DELAY = 0.2
 
 local function isFiniteNumber(value: any): boolean
 	return type(value) == "number" and value == value and value > -math.huge and value < math.huge
 end
 
-local function tableToVector(table: { X: number, Y: number, Z: number }): Vector3
-	return Vector3.new(table.X, table.Y, table.Z)
+local function tableToVector(value: { X: number, Y: number, Z: number }): Vector3
+	return Vector3.new(value.X, value.Y, value.Z)
 end
 
-local function tableToCFrame(t)
-    if not t or not t.Position then return CFrame.new() end
-    local p = tableToVector(t.Position)
-    if t.R00 == nil then
-        return CFrame.new(p)
-    end
+local function runWithRetries(callback)
+	local lastError
 
-    return CFrame.new(
-        p.X, p.Y, p.Z,
-        t.R00, t.R01, t.R02,
-        t.R10, t.R11, t.R12,
-        t.R20, t.R21, t.R22
-    )
+	for attempt = 1, DATASTORE_RETRY_COUNT do
+		local success, result = pcall(callback)
+		if success then
+			return true, result
+		end
+
+		lastError = result
+		if attempt < DATASTORE_RETRY_COUNT then
+			task.wait(DATASTORE_RETRY_DELAY * attempt)
+		end
+	end
+
+	return false, lastError
 end
 
 local function validateAnchorCFrame(anchorCFrame: CFrame): (boolean, string?)
@@ -86,7 +93,7 @@ end
 
 local function normalizeGateIds(player: Player, rawGateIds: { any }): (boolean, string?, { number }?)
 	if type(rawGateIds) ~= "table" then
-		return false, "Invalid clipboard selection."
+		return false, "Invalid clipboard selection.", nil
 	end
 
 	local seen = {}
@@ -94,7 +101,7 @@ local function normalizeGateIds(player: Player, rawGateIds: { any }): (boolean, 
 
 	for _, rawId in ipairs(rawGateIds) do
 		if type(rawId) ~= "number" or not isFiniteNumber(rawId) then
-			return false, "Invalid clipboard selection."
+			return false, "Invalid clipboard selection.", nil
 		end
 		if seen[rawId] then
 			continue
@@ -102,13 +109,13 @@ local function normalizeGateIds(player: Player, rawGateIds: { any }): (boolean, 
 
 		local gate = GateService.GetGateInstance(rawId)
 		if not gate then
-			return false, "Selection contains a missing gate."
+			return false, "Selection contains a missing gate.", nil
 		end
 		if not PermissionService.canPlayerDo(player.UserId, gate.OwnerId, "Move") then
-			return false, "Selection contains gates you can't move."
+			return false, "Selection contains gates you can't move.", nil
 		end
 		if not PermissionService.canPlayerDo(player.UserId, player.UserId, "Spawn", gate.Name) then
-			return false, "Selection contains gates you can't spawn."
+			return false, "Selection contains gates you can't spawn.", nil
 		end
 
 		seen[rawId] = true
@@ -116,35 +123,44 @@ local function normalizeGateIds(player: Player, rawGateIds: { any }): (boolean, 
 	end
 
 	if #gateIds == 0 then
-		return false, "Select at least one gate first."
+		return false, "Select at least one gate first.", nil
+	end
+	if #gateIds > MAX_GATES_PER_SAVE then
+		return false, "Clipboard saves can contain at most " .. tostring(MAX_GATES_PER_SAVE) .. " gates.", nil
 	end
 
 	return true, nil, gateIds
 end
 
-local function getPlayerSaves(rootSaves: TRootSaves, userId: number, createIfMissing: boolean): (TPlayerSaves?, string?)
-	local userKey = tostring(userId)
-	local playerSaves = rootSaves[userKey]
+local function buildSaveSummaries(playerSaves: TPlayerSaves): { TSaveSummary }
+	local summaries = {}
 
-	if playerSaves == nil then
-		if not createIfMissing then
-			return {}, nil
+	for title, encodedSave in pairs(playerSaves) do
+		if type(title) == "string" and type(encodedSave) == "table" then
+			local summarySuccess, gateCount, wireCount = pcall(function()
+				return ClipboardCodec.GetSummary(encodedSave)
+			end)
+
+			if summarySuccess then
+				table.insert(summaries, {
+					Title = title,
+					GateCount = gateCount,
+					WireCount = wireCount,
+				})
+			end
 		end
-
-		playerSaves = {}
-		rootSaves[userKey] = playerSaves
 	end
 
-	if type(playerSaves) ~= "table" then
-		return nil, "Clipboard data is corrupted."
-	end
+	table.sort(summaries, function(left, right)
+		return string.lower(left.Title) < string.lower(right.Title)
+	end)
 
-	return playerSaves, nil
+	return summaries
 end
 
-local function readRootSaves(): (boolean, string?, TRootSaves?)
-	local success, result = pcall(function()
-		return ClipboardDataStore:GetAsync(DATASTORE_KEY)
+local function readLegacyRootSaves(): (boolean, string?, TRootSaves?)
+	local success, result = runWithRetries(function()
+		return LegacyClipboardDataStore:GetAsync(LEGACY_DATASTORE_KEY)
 	end)
 	if not success then
 		return false, DATASTORE_ERROR_MESSAGE, nil
@@ -160,35 +176,139 @@ local function readRootSaves(): (boolean, string?, TRootSaves?)
 	return true, nil, result :: TRootSaves
 end
 
+local function compactLegacyPlayerSaves(userId: number): (boolean, string?, TPlayerSaves?)
+	local success, message, rootSaves = readLegacyRootSaves()
+	if not success or rootSaves == nil then
+		return false, message, nil
+	end
+
+	local userKey = tostring(userId)
+	local legacyPlayerSaves = rootSaves[userKey]
+	if legacyPlayerSaves == nil then
+		return true, nil, {}
+	end
+	if type(legacyPlayerSaves) ~= "table" then
+		return false, "Clipboard data is corrupted.", nil
+	end
+
+	local compactSaves = {}
+	for rawSaveName, legacySave in pairs(legacyPlayerSaves) do
+		local saveName = normalizeSaveName(rawSaveName)
+		if saveName == "" or type(legacySave) ~= "table" then
+			warn("Skipping corrupt legacy clipboard save for user " .. userKey .. ".")
+			continue
+		end
+
+		local decodeSuccess, decodedSave = pcall(function()
+			return ClipboardCodec.DecodeLegacySave(legacySave)
+		end)
+		if not decodeSuccess then
+			warn("Skipping legacy clipboard save '" .. saveName .. "' because it could not be decoded.")
+			continue
+		end
+
+		decodedSave.SaveName = saveName
+		local valid, validationMessage = ClipboardValidation.ValidateSave(decodedSave)
+		if not valid then
+			warn("Skipping legacy clipboard save '" .. saveName .. "': " .. tostring(validationMessage))
+			continue
+		end
+
+		local encodeSuccess, compactSave = pcall(function()
+			return ClipboardCodec.EncodeSave(decodedSave)
+		end)
+		if not encodeSuccess then
+			warn("Skipping legacy clipboard save '" .. saveName .. "': " .. tostring(compactSave))
+			continue
+		end
+
+		compactSaves[saveName] = compactSave
+	end
+
+	return true, nil, compactSaves
+end
+
+local function migratePlayerSaves(userId: number): (boolean, string?, TPlayerSaves?)
+	local success, message, compactSaves = compactLegacyPlayerSaves(userId)
+	if not success or compactSaves == nil then
+		return false, message, nil
+	end
+
+	local userKey = tostring(userId)
+	local updateSuccess, result = runWithRetries(function()
+		return ClipboardDataStore:UpdateAsync(userKey, function(currentValue)
+			if currentValue == nil then
+				return compactSaves
+			end
+
+			if type(currentValue) ~= "table" then
+				return currentValue
+			end
+
+			local playerSaves = currentValue :: TPlayerSaves
+			for saveName, compactSave in pairs(compactSaves) do
+				if playerSaves[saveName] == nil then
+					playerSaves[saveName] = compactSave
+				end
+			end
+
+			return playerSaves
+		end)
+	end)
+
+	if not updateSuccess then
+		return false, DATASTORE_ERROR_MESSAGE, nil
+	end
+	if type(result) ~= "table" then
+		return false, "Clipboard data is corrupted.", nil
+	end
+
+	return true, nil, result :: TPlayerSaves
+end
+
+local function readPlayerSaves(userId: number): (boolean, string?, TPlayerSaves?)
+	local userKey = tostring(userId)
+	local success, result = runWithRetries(function()
+		return ClipboardDataStore:GetAsync(userKey)
+	end)
+	if not success then
+		return false, DATASTORE_ERROR_MESSAGE, nil
+	end
+
+	if result == nil then
+		return migratePlayerSaves(userId)
+	end
+	if type(result) ~= "table" then
+		return false, "Clipboard data is corrupted.", nil
+	end
+
+	return true, nil, result :: TPlayerSaves
+end
+
 local function mutatePlayerSaves<T>(userId: number, mutator: (TPlayerSaves) -> (boolean, string?, T?)): (boolean, string?, T?)
 	local mutatorMessage: string?
 	local mutatorResult: T?
+	local userKey = tostring(userId)
 
-	local success = pcall(function()
-		ClipboardDataStore:UpdateAsync(DATASTORE_KEY, function(currentValue)
-			local rootSaves = currentValue
-			if rootSaves == nil then
-				rootSaves = {}
+	local success = runWithRetries(function()
+		ClipboardDataStore:UpdateAsync(userKey, function(currentValue)
+			local playerSaves = currentValue
+			if playerSaves == nil then
+				playerSaves = {}
 			end
-			if type(rootSaves) ~= "table" then
+			if type(playerSaves) ~= "table" then
 				mutatorMessage = "Clipboard data is corrupted."
 				return nil
 			end
 
-			local playerSaves, err = getPlayerSaves(rootSaves :: TRootSaves, userId, true)
-			if playerSaves == nil then
-				mutatorMessage = err
-				return nil
-			end
-
-			local ok, message, result = mutator(playerSaves)
+			local ok, message, result = mutator(playerSaves :: TPlayerSaves)
 			if not ok then
 				mutatorMessage = message
 				return nil
 			end
 
 			mutatorResult = result
-			return rootSaves
+			return playerSaves
 		end)
 	end)
 
@@ -202,30 +322,9 @@ local function mutatePlayerSaves<T>(userId: number, mutator: (TPlayerSaves) -> (
 	return true, nil, mutatorResult
 end
 
-local function buildSaveSummaries(playerSaves: TPlayerSaves): { TSaveSummary }
-	local summaries = {}
-
-	for title, encodedSave in pairs(playerSaves) do
-		if type(title) == "string" and type(encodedSave) == "table" then
-			local gates = if type(encodedSave.Gates) == "table" then encodedSave.Gates else {}
-			local connections = if type(encodedSave.Connections) == "table" then encodedSave.Connections else {}
-			table.insert(summaries, {
-				Title = title,
-				GateCount = #gates,
-				WireCount = #connections,
-				UpdatedAt = if isFiniteNumber(encodedSave.Timestamp) then encodedSave.Timestamp else 0,
-			})
-		end
-	end
-
-	table.sort(summaries, function(a, b)
-		if a.UpdatedAt == b.UpdatedAt then
-			return a.Title < b.Title
-		end
-		return a.UpdatedAt > b.UpdatedAt
-	end)
-
-	return summaries
+function ClipboardService.MigratePlayerSaves(userId: number): (boolean, string?)
+	local success, message = migratePlayerSaves(userId)
+	return success, message
 end
 
 local function getDecodedSave(playerSaves: TPlayerSaves, rawSaveName: any): (boolean, string?, any?)
@@ -260,28 +359,18 @@ local function getDecodedSave(playerSaves: TPlayerSaves, rawSaveName: any): (boo
 end
 
 function ClipboardService.ListSaves(userId: number): (boolean, string?, { TSaveSummary }?)
-	local success, message, rootSaves = readRootSaves()
-	if not success or rootSaves == nil then
+	local success, message, playerSaves = readPlayerSaves(userId)
+	if not success or playerSaves == nil then
 		return false, message, nil
-	end
-
-	local playerSaves, err = getPlayerSaves(rootSaves, userId, false)
-	if playerSaves == nil then
-		return false, err, nil
 	end
 
 	return true, nil, buildSaveSummaries(playerSaves)
 end
 
 function ClipboardService.GetSavePreview(userId: number, rawSaveName: any): (boolean, string?, TPreviewData?)
-	local success, message, rootSaves = readRootSaves()
-	if not success or rootSaves == nil then
+	local success, message, playerSaves = readPlayerSaves(userId)
+	if not success or playerSaves == nil then
 		return false, message, nil
-	end
-
-	local playerSaves, err = getPlayerSaves(rootSaves, userId, false)
-	if playerSaves == nil then
-		return false, err, nil
 	end
 
 	local decodedSuccess, decodedMessage, saveTable = getDecodedSave(playerSaves, rawSaveName)
@@ -297,8 +386,8 @@ function ClipboardService.GetSavePreview(userId: number, rawSaveName: any): (boo
 		})
 	end
 
-	table.sort(previewGates, function(a, b)
-		return a.Id < b.Id
+	table.sort(previewGates, function(left, right)
+		return left.Id < right.Id
 	end)
 
 	local previewData = {
@@ -343,7 +432,7 @@ function ClipboardService.SaveSelection(player: Player, rawSaveName: any, rawGat
 		return ClipboardCodec.EncodeSave(saveTable)
 	end)
 	if not encodeSuccess then
-		return false, "Clipboard save couldn't be serialized.", nil
+		return false, tostring(encodedSave), nil
 	end
 
 	return mutatePlayerSaves(player.UserId, function(playerSaves)
@@ -383,14 +472,9 @@ function ClipboardService.LoadSave(player: Player, rawSaveName: any, anchorCFram
 		return false, anchorMessage or "Invalid load position."
 	end
 
-	local success, message, rootSaves = readRootSaves()
-	if not success or rootSaves == nil then
+	local success, message, playerSaves = readPlayerSaves(player.UserId)
+	if not success or playerSaves == nil then
 		return false, message
-	end
-
-	local playerSaves, err = getPlayerSaves(rootSaves, player.UserId, false)
-	if playerSaves == nil then
-		return false, err
 	end
 
 	local decodedSuccess, decodedMessage, saveTable = getDecodedSave(playerSaves, rawSaveName)
@@ -398,26 +482,13 @@ function ClipboardService.LoadSave(player: Player, rawSaveName: any, anchorCFram
 		return false, decodedMessage
 	end
 
-	do -- Testing stuff
-		local saveCFrame = CFrame.new(tableToVector(saveTable.BoxPosition))
-		
-    local basePosition = tableToCFrame(saveTable.BaseCFrame).Position
-    local basePivot = CFrame.new(basePosition)
+	do
+		local relativeBoxPosition = tableToVector(saveTable.BoxPosition)
+		local boxSize = tableToVector(saveTable.BoxSize)
+		local boxCFrame = anchorCFrame:ToWorldSpace(CFrame.new(relativeBoxPosition))
 
-    -- 1. Get the save's offset relative to the original save's base position
-    local relativeOffset = basePivot:Inverse() * saveCFrame
-    -- 2. Apply this offset to the new anchor (which preserves the client's rotation)
-    local finalCFrame = anchorCFrame * relativeOffset
-
-		local Box1 = Instance.new("Part")
-		Box1.Anchored = true
-		Box1.Size = Vector3.one
-		Box1.Name = "anchorCFrame"
-		Box1.Parent = workspace
-		Box1.CFrame = finalCFrame
-		
-		if not Safezones.IsValidBoxPlacement(saveCFrame, tableToVector(saveTable.BoxSize)) then
-			return false, "Invalid placement"
+		if not Safezones.IsValidBoxPlacement(boxCFrame, boxSize) then
+			return false, "Invalid placement: Blueprint intersects a Safezone."
 		end
 	end
 

@@ -28,10 +28,11 @@ local raycastFilter = Instance.new("Folder")
 raycastFilter.Name = "RaycastFilter"
 raycastFilter.Parent = Workspace
 local Wires = workspace:WaitForChild("Wires")
+local Safezones = workspace:WaitForChild("Safezones")
 
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
-rayParams.FilterDescendantsInstances = { raycastFilter, Wires }
+rayParams.FilterDescendantsInstances = { raycastFilter, Wires, Safezones }
 
 -- ----------------------------- -------- DEBUG VISUALIZATION ------- ----------------------------
 

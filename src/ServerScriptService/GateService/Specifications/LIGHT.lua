@@ -12,7 +12,7 @@ return {
   end,
 
   Process = function(self)
-    local color = Color3.new(self:ReadInput("R").AsNumber(), self:ReadInput("G").AsNumber(), self:ReadInput("B").AsNumber())
+    local color = Color3.new(math.min(1, self:ReadInput("R").AsNumber()), math.min(1, self:ReadInput("G").AsNumber()), math.min(1, self:ReadInput("B").AsNumber()))
 
     Updates.RegisterVisualChange(self.Model.Decoration.Top, { PointLight = { Color = color, Enabled = color ~= Color3.new() }, Color = color })
   end

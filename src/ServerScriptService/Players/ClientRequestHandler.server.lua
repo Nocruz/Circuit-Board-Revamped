@@ -7,6 +7,7 @@
 ]]
 
 -- Requires and Services
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
@@ -24,10 +25,27 @@ local gates = workspace:WaitForChild("Gates")
 
 -- Cooldown state
 local PlayerCooldowns: { [number]: true } = {}
+local PlayerLoadCooldowns: { [number]: true } = {}
 local ACTION_COOLDOWN = 0.05 -- seconds
+local LOAD_SAVE_COOLDOWN = 10 -- seconds
+
+local function migrateClipboardSaves(player: Player)
+	task.spawn(function()
+		local success, message = ClipboardService.MigratePlayerSaves(player.UserId)
+		if not success then
+			local playerId = tostring(player.UserId)
+			warn("Failed to migrate clipboard saves for " .. player.Name .. " (" .. playerId .. "): " .. tostring(message))
+		end
+	end)
+end
+
+Players.PlayerAdded:Connect(migrateClipboardSaves)
+for _, player in ipairs(Players:GetPlayers()) do
+	migrateClipboardSaves(player)
+end
 
 local function isAdmin(player: Player)
-	return player.UserId == 159768840
+	return PermissionService.isAdmin(player.UserId)
 end
 
 local function ensureRemoteFunction(parent: Instance, name: string): RemoteFunction
@@ -58,6 +76,19 @@ local function setCooldown(player: Player)
 	PlayerCooldowns[player.UserId] = true
 	task.delay(ACTION_COOLDOWN, function()
 		PlayerCooldowns[player.UserId] = nil
+	end)
+end
+
+local function isLoadCooldowned(player: Player): boolean
+	if isAdmin(player) then return false end
+	return PlayerLoadCooldowns[player.UserId] ~= nil
+end
+
+local function setLoadCooldown(player: Player)
+	if isLoadCooldowned(player) then return end
+	PlayerLoadCooldowns[player.UserId] = true
+	task.delay(LOAD_SAVE_COOLDOWN, function()
+		PlayerLoadCooldowns[player.UserId] = nil
 	end)
 end
 
@@ -568,7 +599,11 @@ configurationQuery.OnServerInvoke = function(player: Player, id: number): any
 		return false, "Lacks permissions to configure this gate"
 	end
 	
-	return true, { Data = gate.AttributeData, Current = gate.Attributes }
+	return true, {
+		Data = gate.AttributeData,
+		Current = gate.Attributes,
+		Visuals = GateService.GetVisualEditorData(id),
+	}
 end
 
 local configureFunction = ReplicatedStorage.Client.Events:FindFirstChild("Configure")
@@ -616,6 +651,42 @@ configureFunction.OnServerInvoke = function(player: Player, id: number, attribut
 	return true, nil
 end
 
+local applyVisualsFunction = ensureRemoteFunction(eventsFolder, "ApplyVisuals")
+applyVisualsFunction.OnServerInvoke = function(player: Player, id: number, visuals: any): (boolean, string?, any?)
+	if isCooldowned(player) then
+		print(player.Name .. " tried applying gate visuals, but is still in cooldown")
+		return false, "Too fast!", nil
+	end
+
+	setCooldown(player)
+	print(player.Name .. " is requesting to apply gate visuals...")
+
+	if type(id) ~= "number" or type(visuals) ~= "table" then
+		return false, "Invalid parameters! Check with a mod", nil
+	end
+
+	local gate = GateService.GetGateInstance(id)
+	if not gate then
+		return false, "Invalid gate! Check with a mod", nil
+	end
+
+	if not PermissionService.canPlayerDo(player.UserId, gate.OwnerId, "Configure") then
+		print("Failure! Player " .. player.Name .. " is not allowed to configure this gate's visuals")
+		return false, "Lacks permissions to configure this gate", nil
+	end
+
+	local ok, resolvedOrError = pcall(function()
+		return GateService.ApplyVisuals(id, visuals)
+	end)
+
+	if not ok then
+		warn("Failure! Applying visuals failed: " .. tostring(resolvedOrError))
+		return false, tostring(resolvedOrError), nil
+	end
+
+	return true, nil, resolvedOrError
+end
+
 -- ----------------------------- -------------- CLIPBOARD ----------- -----------------------------
 
 local clipboardListQuery = ensureRemoteFunction(queriesFolder, "ClipboardList")
@@ -658,7 +729,7 @@ end
 
 local clipboardLoadFunction = ensureRemoteFunction(eventsFolder, "ClipboardLoad")
 clipboardLoadFunction.OnServerInvoke = function(player: Player, saveName: string, anchorCFrame: CFrame): (boolean, string?)
-	if isCooldowned(player) then
+	if isLoadCooldowned(player) then
 		return false, "Too fast!"
 	end
 
@@ -666,7 +737,7 @@ clipboardLoadFunction.OnServerInvoke = function(player: Player, saveName: string
 		return false, "Invalid clipboard load."
 	end
 
-	setCooldown(player)
+	setLoadCooldown(player)
 	return ClipboardService.LoadSave(player, saveName, anchorCFrame)
 end
 

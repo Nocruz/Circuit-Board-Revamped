@@ -85,9 +85,11 @@ function GateService.RegisterSpecification(name: string, specification: TSpecifi
 end
 
 local function LoadSpecifications() 
-	local specificationsFolder: Folder = script.Specifications
+	local specificationsFolder = script.Specifications
 	for _, specification in ipairs(specificationsFolder:GetChildren()) do
-		GateService.RegisterSpecification(specification.Name, require(specification))
+		if specification:IsA("ModuleScript") and specification.Name ~= "init" then
+			GateService.RegisterSpecification(specification.Name, require(specification))
+		end
 	end
 end
 
@@ -132,14 +134,99 @@ function GateService.GetGateInstance(gateID: TGateID): TGateInstance?
 	return Instances[gateID]
 end
 
+local function getSpecificationForGate(gate: TGateInstance): TSpecification
+	local specification = Specifications[gate.Name]
+	assert(specification, "Gate specification '" .. tostring(gate.Name) .. "' is not registered")
+	return specification
+end
+
+local function getRelativePath(root: Instance, descendant: Instance): { string }?
+	local path = {}
+	local current: Instance? = descendant
+
+	while current and current ~= root do
+		table.insert(path, 1, current.Name)
+		current = current.Parent
+	end
+
+	if current ~= root then
+		return nil
+	end
+
+	return path
+end
+
+local function findByPath(root: Instance, path: { string }): Instance?
+	local current: Instance? = root
+	for _, name in ipairs(path) do
+		current = current and current:FindFirstChild(name)
+		if current == nil then
+			return nil
+		end
+	end
+	return current
+end
+
+local function remapModelReferences(gate: TGateInstance, oldModel: Model, newModel: Model)
+	for key, value in pairs(gate) do
+		if typeof(value) ~= "Instance" then
+			continue
+		end
+
+		if value == oldModel then
+			gate[key] = newModel
+		elseif value:IsA("ClickDetector") and value:IsDescendantOf(oldModel) then
+			value.Parent = newModel
+		elseif value:IsDescendantOf(oldModel) then
+			local path = getRelativePath(oldModel, value)
+			if path ~= nil then
+				local replacement = findByPath(newModel, path)
+				if replacement ~= nil then
+					gate[key] = replacement
+				end
+			end
+		end
+	end
+end
+
+function GateService.GetVisualEditorData(gateID: TGateID)
+	local gate = Instances[gateID]
+	assert(gate, "Gate " .. gateID .. " does not exist")
+
+	local specification = getSpecificationForGate(gate)
+	local visuals = Visuals.CompleteWithDefaults(
+		Visuals.Clone(gate.Visuals or {}),
+		specification.Name,
+		#specification.Nodes.Inputs,
+		#specification.Nodes.Outputs,
+		specification.DefaultVisuals
+	)
+
+	local main = gate.Model.Decoration.Main
+	local hasDisplayName = main:FindFirstChild("DisplayNameGui", true) ~= nil
+
+	return {
+		SpecificationName = specification.Name,
+		HasDisplayName = hasDisplayName,
+		InputNodes = table.clone(specification.Nodes.Inputs),
+		OutputNodes = table.clone(specification.Nodes.Outputs),
+		Visuals = visuals,
+	}
+end
+
 function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecificationName, cframe: CFrame, visuals, attributes): TGateID
 	-- print("Instantiating " .. specificationName .. " with ID " .. nextID .. " at " .. tostring(cframe) .. " for " .. owner)
 	
 	local specification = Specifications[specificationName]
 	assert(specification, "Gate specification " .. specificationName .. " has not been registered!")
 	
-	visuals = visuals or {}
-	setmetatable(visuals, { __index = specification.DefaultVisuals} )
+	visuals = Visuals.CompleteWithDefaults(
+		Visuals.Clone(visuals or {}),
+		specification.Name,
+		#specification.Nodes.Inputs,
+		#specification.Nodes.Outputs,
+		specification.DefaultVisuals
+	)
 	attributes = attributes or {}
 	
 	local model: Model = Models.new(specification.Nodes, visuals)
@@ -160,7 +247,7 @@ function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecifica
 		for _, output in ipairs(specification.Nodes.Outputs) do gate.Nodes.Outputs[output] = { }; gate.Nodes.Signals[output] = false end
 		for _, input in ipairs(specification.Nodes.Inputs) do gate.Nodes.Inputs[input] = { } end
 		gate.Attributes = {}
-		for name, specification in pairs(specification.AttributeData) do gate.Attributes[name] = if attributes[name] then attributes[name] else specification.Default end
+		for name, specification in pairs(specification.AttributeData) do gate.Attributes[name] = if attributes[name] ~= nil then attributes[name] else specification.Default end
 		setmetatable(gate, { __index = specification } )
 	end
 	Instances[nextId] = gate
@@ -173,6 +260,38 @@ function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecifica
 	
 	nextId = nextId + 1
 	return nextId - 1
+end
+
+function GateService.ApplyVisuals(gateID: TGateID, nextVisuals: any)
+	local gate = Instances[gateID]
+	assert(gate, "Gate " .. gateID .. " does not exist")
+
+	local specification = getSpecificationForGate(gate)
+	local visuals = Visuals.CompleteWithDefaults(
+		Visuals.Clone(nextVisuals or {}),
+		specification.Name,
+		#specification.Nodes.Inputs,
+		#specification.Nodes.Outputs,
+		specification.DefaultVisuals
+	)
+
+	local oldModel = gate.Model
+	local newModel: Model = Models.new(specification.Nodes, visuals)
+	newModel:PivotTo(oldModel:GetPivot())
+	newModel:SetAttribute("GateId", gateID)
+	newModel.Name = specification.Name
+	newModel.Parent = oldModel.Parent
+
+	gate.Model = newModel
+	gate.Visuals = visuals
+
+	remapModelReferences(gate, oldModel, newModel)
+	Connections.RebindGate(gateID, newModel :: any)
+
+	oldModel:Destroy()
+	Updates.Propagate(gateID)
+
+	return Visuals.Clone(visuals)
 end
 
 function GateService.Interact(gateID: TGateID, player: Player)
@@ -290,7 +409,7 @@ function GateService.ReadAttribute(gateID: TGateID, attributeName: TAttributeNam
 	assert(gate, "Gate " .. gateID .. " does not exist")
 
 	local attribute = gate.Attributes[attributeName]
-	assert(attribute, "Gate " .. gateID .. " has no attribute " .. attributeName)
+	assert(attribute ~= nil, "Gate " .. gateID .. " has no attribute " .. attributeName)
 
 	if nodeName then
 		local inputNode: TNodeInstance = gate.Nodes.Inputs[nodeName]

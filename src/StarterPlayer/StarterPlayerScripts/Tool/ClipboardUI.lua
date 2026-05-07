@@ -6,7 +6,6 @@ export type TSaveSummary = {
 	Title: string,
 	GateCount: number,
 	WireCount: number,
-	UpdatedAt: number,
 }
 
 type TCallbacks = {
@@ -137,7 +136,7 @@ end
 
 local function buildSaveRow(summary: TSaveSummary): TextButton
 	local button = create("TextButton", {
-		Size = UDim2.new(1, 0, 0, 54),
+		Size = UDim2.new(1, 0, 0, 44),
 		BackgroundColor3 = COLORS.PanelAlt,
 		BorderSizePixel = 0,
 		Text = "",
@@ -169,18 +168,6 @@ local function buildSaveRow(summary: TSaveSummary): TextButton
 		Text = string.format("%d gates, %d wires", summary.GateCount, summary.WireCount),
 		TextColor3 = COLORS.Muted,
 		TextSize = 11,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = button,
-	})
-
-	create("TextLabel", {
-		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(12, 39),
-		Size = UDim2.new(1, -24, 0, 12),
-		Font = Enum.Font.Gotham,
-		Text = os.date("!%Y-%m-%d %H:%M", math.floor(summary.UpdatedAt)),
-		TextColor3 = COLORS.Muted,
-		TextSize = 10,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = button,
 	})
