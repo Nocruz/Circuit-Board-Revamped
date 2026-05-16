@@ -42,7 +42,7 @@ function Attributes.IsValid(attribute: string | number | boolean, specification:
 	return true
 end
 
-function Attributes.Get(attribute: string | number | boolean, specification:TAttributeSpecification<string | number | boolean>)
+function Attributes.GetOrDefault(attribute: string | number | boolean, specification:TAttributeSpecification<string | number | boolean>)
 	return if Attributes.IsValid(attribute, specification) then attribute else specification.Default
 end
 

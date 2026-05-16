@@ -159,9 +159,9 @@ function Connections.GetOutgoing(gateID, outputName)
 		else {}
 end
 
-function Connections.GetIncoming(gateID, outputName)
-	return if Incoming[gateID] and Incoming[gateID][outputName]
-		then Incoming[gateID][outputName]
+function Connections.GetIncoming(gateID, inputName)
+	return if Incoming[gateID] and Incoming[gateID][inputName]
+		then Incoming[gateID][inputName]
 		else {}
 end
 -- ----------------------------- ------------ END OF MODULE -------------- ----------------------------

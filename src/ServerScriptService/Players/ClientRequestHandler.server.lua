@@ -197,7 +197,7 @@ interactFunction.OnServerInvoke = function(player: Player, id: number): (boolean
 		return false, "Lacks permissions to interact with this gate"
 	end
 	
-	GateService.Interact(id, player)
+	GateService.Update(id, { Source = "Interaction", Player = player })
 	return true, nil
 end
 

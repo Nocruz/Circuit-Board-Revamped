@@ -10,11 +10,10 @@ local Workspace = game:GetService("Workspace")
 local Models = require(script.Models)
 local Updates = require(script.Updates)
 local Signals = require(script.Signals)
-local Visuals = require(script.Models.Visuals)
 local Attributes = require(script.Attributes)
 local Connections = require(script.Connections)
 
--- ----------------------------- -------------- TYPE ALIASES ------------ ----------------------------
+-- ----------------------------- ------------- TYPE ALIASES -------------- -----------------------------
 
 type TNodeName = string
 type TAttributeName = string
@@ -26,18 +25,18 @@ type TAttribute = string | number | boolean
 type TAttributeSpecification = nil
 type TSignal = Signals.TSignal
 type TGateModel = Models.TGateModel
+type TModelType = Models.TModelType
+type TVisuals = Models.TVisuals
 
--- ----------------------------- ----------- TYPE DEFINITIONS ------------ ----------------------------
-
-export type TNodeInstance = { [TGateID]: { [TNodeName]: true } }
+-- ----------------------------- ----------- TYPE DEFINITIONS ------------ -----------------------------
 
 export type TGateInstance = {
 	Id: number,
 	OwnerId: TPlayerID,
 	Model: TGateModel,
-	Visuals: any,
 	
-	Nodes: { Outputs: { [TNodeName]: TNodeInstance }, Inputs: { [TNodeName]: TNodeInstance }, Signals: { [TNodeName]: TSignal } },
+	-- Stores the current value of the Output nodes
+	Signals: { [TNodeName]: TSignal },
 	Attributes: { [TAttributeName]: TAttribute }
 }
 
@@ -45,30 +44,26 @@ export type TSpecification = {
 	Name: string,
 	Nodes: { Outputs: { string }, Inputs: { string } },
 	AttributeData: { [TAttributeName]: TAttributeSpecification },
-	DefaultVisuals: Models.TVisuals,
+	DefaultVisuals: TVisuals,
+	ModelType: TModelType,
 	
 	Setup: (gate: TGateInstance) -> (),
-	Process: (self: TGateInstance) -> TSignal
+	Process: (self: TGateInstance) -> ()
 }
 
-
--- ----------------------------- ----------- MODULE DEFINITION ----------- -----------------------------
+-- ----------------------------- ---------- MODULE DEFINITION ------------ -----------------------------
 
 local GateService = {}
-local Specifications: { [TSpecificationName]: TSpecification } = {}
-local Instances: { [TGateID]: TGateInstance } = {}
+local Specifications --[[: { [TSpecificationName]: TSpecification }]] = {}
+local Instances --[[: { [TGateID]: TGateInstance }]] = {}
 
---[[ --------------------------- ------ SPECIFICATIONS DEFINITIONS ------- -----------------------------
-	Specifications can be defined manually following the TGateSpecification signature OR
-	can be created from a simple JSON like module that defines simple behaviour.
-	
-	The JSON is just the Nodes, AttributeData and DefaultVisuals.
-	It should also hold a Process key that matches the TGateSpecification.Process signature.
-]]
+-- ----------------------------- ------ SPECIFICATIONS DEFINITIONS ------- -----------------------------
+-- Specifications are actually a gate instance's metatable. As such, the 'BaseGateUtils' holds the methods
+--   any gate should have.
 
-local specificationMetatable = { __index = {
+local BaseGateUtils = { __index = {
 	ReadInput = function(gate, node) return GateService.ReadInput(gate.Id, node) end,
-	ReadAttribute = function(gate, attribute, node) return GateService.ReadAttribute(gate.Id, attribute, node) end,
+	ReadAttribute = function(gate, attribute, node) return GateService.ReadAttributeFromNode(gate.Id, attribute, node) end,
 }}
 
 function GateService.GetSpecification(name): TSpecification?
@@ -76,523 +71,385 @@ function GateService.GetSpecification(name): TSpecification?
 end
 
 function GateService.RegisterSpecification(name: string, specification: TSpecification)
-	assert(Specifications[name] == nil, "Specification " .. name .. " was already registered")
-	local data = setmetatable(specification, specificationMetatable)
+	assert(Specifications[name] == nil, "Can't register specification \"" .. name .. "\". Reason: Registry under that name already exists.")
+	assert(specification ~= nil and specification.Nodes ~= nil, "Can't register specification \"" .. name .. "\". Reason: Specification does not have necessary field: Nodes")
+	assert(specification.Nodes.Inputs ~= nil, "Can't register specification \"" .. name .. "\". Reason: Specification does not have necessary field: Nodes.Inputs")
+	assert(specification.Nodes.Outputs ~= nil, "Can't register specification \"" .. name .. "\". Reason: Specification does not have necessary field: Nodes.Outputs")
+	
+	local data = specification
 	data.Name = name
-	data.DefaultVisuals = Visuals.CompleteWithDefaults(data.DefaultVisuals or {}, specification.Name, #data.Nodes.Inputs, #data.Nodes.Outputs)
-	data.AttributeData = specification.AttributeData or { }
+	data.DefaultVisuals = data.DefaultVisuals or {}
+	if (data.DefaultVisuals.DisplayName == nil) then data.DefaultVisuals.DisplayName = name end
+	data.AttributeData = data.AttributeData or {}
+	data.ModelType = data.ModelType or "Basic"
+	setmetatable(data, BaseGateUtils)
+	
 	Specifications[name] = data
 end
 
-local function LoadSpecifications() 
-	local specificationsFolder = script.Specifications
-	for _, specification in ipairs(specificationsFolder:GetChildren()) do
-		if specification:IsA("ModuleScript") and specification.Name ~= "init" then
-			GateService.RegisterSpecification(specification.Name, require(specification))
-		end
-	end
-end
+-- ----------------------------- ------- GATE INSTANCE DEFINITIONS ------- ----------------------------
 
---[[ --------------------------- ------ GATE INSTANCE DEFINITIONS ------- -----------------------------
-	GateService handles the Registry of gates (Only used for interactions Model -> Gate preferably).
-	ECS may be implemented in the near future, but for now every gate will have a metatable reference to
-	its GateSpecification.
-	
-	GateService is responsible for the creation of new gates (Because you can't instantiate Gates from the
-	gates if there are no Gates). However, Gates are responsible for their own destruction and connections.
-]]
-
-local nextId: TGateID = 0
-
-local gatesFolder = Workspace:FindFirstChild("Gates")
-if not gatesFolder then
-	gatesFolder = Instance.new("Folder")
-	gatesFolder.Name = "Gates"
-	gatesFolder.Parent = Workspace
-end
-
-local playerFolders = setmetatable({}, { __mode = "kv"} )
-local function getPlayerFolder(owner: TPlayerID)
-	local folderName = if owner == 0 then "Server" else tostring(owner)
-	if playerFolders[folderName] then return playerFolders[folderName]
-	else 
-		local ownerFolder = gatesFolder:FindFirstChild(folderName)
-		if ownerFolder and ownerFolder:IsA("Folder") then
-			playerFolders[folderName] = ownerFolder
-			return ownerFolder
-		else
-			local newFolder = Instance.new("Folder")
-			newFolder.Name = folderName
-			newFolder.Parent = gatesFolder
-			playerFolders[folderName] = ownerFolder
-			return newFolder
-		end
-	end
-end
+-- Id of the last instantiated gate
+local currentID: TGateID = 0
 
 function GateService.GetGateInstance(gateID: TGateID): TGateInstance?
 	return Instances[gateID]
 end
 
-local function getSpecificationForGate(gate: TGateInstance): TSpecification
-	local specification = Specifications[gate.Name]
-	assert(specification, "Gate specification '" .. tostring(gate.Name) .. "' is not registered")
-	return specification
-end
+-- ALL THIS IS BULLSHIT -- ALL THIS IS BULLSHIT -- ALL THIS IS BULLSHIT -- ALL THIS IS BULLSHIT -- ALL THIS IS BULLSHIT --
+-- local gatesFolder = Workspace:FindFirstChild("Gates")
+-- if not gatesFolder then
+-- 	gatesFolder = Instance.new("Folder")
+-- 	gatesFolder.Name = "Gates"
+-- 	gatesFolder.Parent = Workspace
+-- end
 
-local function getRelativePath(root: Instance, descendant: Instance): { string }?
-	local path = {}
-	local current: Instance? = descendant
+-- local playerFolders = setmetatable({}, { __mode = "kv"} )
+-- local function getPlayerFolder(owner: TPlayerID)
+-- 	local folderName = if owner == 0 then "Server" else tostring(owner)
+-- 	if playerFolders[folderName] then return playerFolders[folderName]
+-- 	else 
+-- 		local ownerFolder = gatesFolder:FindFirstChild(folderName)
+-- 		if ownerFolder and ownerFolder:IsA("Folder") then
+-- 			playerFolders[folderName] = ownerFolder
+-- 			return ownerFolder
+-- 		else
+-- 			local newFolder = Instance.new("Folder")
+-- 			newFolder.Name = folderName
+-- 			newFolder.Parent = gatesFolder
+-- 			playerFolders[folderName] = ownerFolder
+-- 			return newFolder
+-- 		end
+-- 	end
+-- end
 
-	while current and current ~= root do
-		table.insert(path, 1, current.Name)
-		current = current.Parent
-	end
+-- local function getSpecificationForGate(gate: TGateInstance): TSpecification
+-- 	local specification = Specifications[gate.Name]
+-- 	assert(specification, "Gate specification '" .. tostring(gate.Name) .. "' is not registered")
+-- 	return specification
+-- end
 
-	if current ~= root then
-		return nil
-	end
+-- local function getRelativePath(root: Instance, descendant: Instance): { string }?
+-- 	local path = {}
+-- 	local current: Instance? = descendant
 
-	return path
-end
+-- 	while current and current ~= root do
+-- 		table.insert(path, 1, current.Name)
+-- 		current = current.Parent
+-- 	end
 
-local function findByPath(root: Instance, path: { string }): Instance?
-	local current: Instance? = root
-	for _, name in ipairs(path) do
-		current = current and current:FindFirstChild(name)
-		if current == nil then
-			return nil
-		end
-	end
-	return current
-end
+-- 	if current ~= root then
+-- 		return nil
+-- 	end
 
-local function remapModelReferences(gate: TGateInstance, oldModel: Model, newModel: Model)
-	for key, value in pairs(gate) do
-		if typeof(value) ~= "Instance" then
-			continue
-		end
+-- 	return path
+-- end
 
-		if value == oldModel then
-			gate[key] = newModel
-		elseif value:IsA("ClickDetector") and value:IsDescendantOf(oldModel) then
-			value.Parent = newModel
-		elseif value:IsDescendantOf(oldModel) then
-			local path = getRelativePath(oldModel, value)
-			if path ~= nil then
-				local replacement = findByPath(newModel, path)
-				if replacement ~= nil then
-					gate[key] = replacement
-				end
-			end
-		end
-	end
-end
+-- local function findByPath(root: Instance, path: { string }): Instance?
+-- 	local current: Instance? = root
+-- 	for _, name in ipairs(path) do
+-- 		current = current and current:FindFirstChild(name)
+-- 		if current == nil then
+-- 			return nil
+-- 		end
+-- 	end
+-- 	return current
+-- end
 
-function GateService.GetVisualEditorData(gateID: TGateID)
-	local gate = Instances[gateID]
-	assert(gate, "Gate " .. gateID .. " does not exist")
+-- local function remapModelReferences(gate: TGateInstance, oldModel: Model, newModel: Model)
+-- 	for key, value in pairs(gate) do
+-- 		if typeof(value) ~= "Instance" then
+-- 			continue
+-- 		end
 
-	local specification = getSpecificationForGate(gate)
-	local visuals = Visuals.CompleteWithDefaults(
-		Visuals.Clone(gate.Visuals or {}),
-		specification.Name,
-		#specification.Nodes.Inputs,
-		#specification.Nodes.Outputs,
-		specification.DefaultVisuals
-	)
+-- 		if value == oldModel then
+-- 			gate[key] = newModel
+-- 		elseif value:IsA("ClickDetector") and value:IsDescendantOf(oldModel) then
+-- 			value.Parent = newModel
+-- 		elseif value:IsDescendantOf(oldModel) then
+-- 			local path = getRelativePath(oldModel, value)
+-- 			if path ~= nil then
+-- 				local replacement = findByPath(newModel, path)
+-- 				if replacement ~= nil then
+-- 					gate[key] = replacement
+-- 				end
+-- 			end
+-- 		end
+-- 	end
+-- end
 
-	local main = gate.Model.Decoration.Main
-	local hasDisplayName = main:FindFirstChild("DisplayNameGui", true) ~= nil
+-- function GateService.GetVisualEditorData(gateID: TGateID)
+-- 	local gate = Instances[gateID]
+-- 	assert(gate, "Gate " .. gateID .. " does not exist")
 
-	return {
-		SpecificationName = specification.Name,
-		HasDisplayName = hasDisplayName,
-		InputNodes = table.clone(specification.Nodes.Inputs),
-		OutputNodes = table.clone(specification.Nodes.Outputs),
-		Visuals = visuals,
-	}
-end
+-- 	local specification = getSpecificationForGate(gate)
+-- 	local visuals = Visuals.CompleteWithDefaults(
+-- 		Visuals.Clone(gate.Visuals or {}),
+-- 		specification.Name,
+-- 		#specification.Nodes.Inputs,
+-- 		#specification.Nodes.Outputs,
+-- 		specification.DefaultVisuals
+-- 	)
 
-function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecificationName, cframe: CFrame, visuals, attributes): TGateID
-	-- print("Instantiating " .. specificationName .. " with ID " .. nextID .. " at " .. tostring(cframe) .. " for " .. owner)
+-- 	local main = gate.Model.Decoration.Main
+-- 	local hasDisplayName = main:FindFirstChild("DisplayNameGui", true) ~= nil
+
+-- 	return {
+-- 		SpecificationName = specification.Name,
+-- 		HasDisplayName = hasDisplayName,
+-- 		InputNodes = table.clone(specification.Nodes.Inputs),
+-- 		OutputNodes = table.clone(specification.Nodes.Outputs),
+-- 		Visuals = visuals,
+-- 	}
+-- end
+-- ALL THIS WAS BULLSHIT -- ALL THIS WAS BULLSHIT -- ALL THIS WAS BULLSHIT -- ALL THIS WAS BULLSHIT -- ALL THIS WAS BULLSHIT --
+
+function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecificationName, cframe: CFrame, extras: { Style: Models.TStyleType?, Visuals: Models.TVisuals?, Attributes: TAttribute? }? ): TGateID
+	-- print("Instantiating gate. Specification: " .. specificationName .. ", ID: " .. currentID .. ", Owner: ".. owner .. ", CFrame: ", tostring(cframe))
+	currentID = currentID + 1
 	
+	-- Initializes the initial data
 	local specification = Specifications[specificationName]
-	assert(specification, "Gate specification " .. specificationName .. " has not been registered!")
+	assert(specification, "Can't instantiate gate of specification \"" .. specificationName .. "\". Reason: Specification has not been registered.")
 	
-	visuals = Visuals.CompleteWithDefaults(
-		Visuals.Clone(visuals or {}),
-		specification.Name,
-		#specification.Nodes.Inputs,
-		#specification.Nodes.Outputs,
-		specification.DefaultVisuals
-	)
-	attributes = attributes or {}
+	-- Loads extras
+	extras = extras or {}; assert(extras ~= nil, "Can't instantiate gate. Reason: Extras table was nil (Unreachable code).")
 	
-	local model: Model = Models.new(specification.Nodes, visuals)
-	do
-		model:PivotTo(cframe)
-		model:SetAttribute("GateId", nextId)
-		model.Name = specificationName
-		model.Parent = getPlayerFolder(owner)
+	local styleName = extras.Style or "Classic"
+	local styleDefaultVisuals = Models.GetStyleDefaults(styleName, { Input = #specification.Nodes.Inputs, Output = #specification.Nodes.Outputs })
+	
+	local visuals = extras.Visuals or {}
+	setmetatable(visuals, { __index = function(_, key)
+		local specificationValue = specification.DefaultVisuals[key]
+		return if specificationValue ~= nil
+			then specificationValue
+			else styleDefaultVisuals[key]
+	end})
+	
+	local attributes = extras.Attributes or {}
+	
+	-- Loads the model
+	local model = Models.Instantiate(specification.ModelType, specification.Nodes, styleName, visuals)
+		model.Instance:PivotTo(cframe)
+		model.Instance:SetAttribute("GateId", currentID)
+		model.Instance.Name = specificationName
+		model.Instance.Parent = if owner == -1 then Workspace.Gates.Server else Workspace.Gates[owner] -- TODO: This can go wrong. Change this.
+	
+	-- Creates the gate entry
+	local gate = {
+		Id = currentID,
+		OwnerId = owner,
+		Model = model,
+		Visuals = visuals,
+		Attributes = {},
+		Signals = {}
+	}
+	
+	-- Initializes with data
+	for _, output in ipairs(specification.Nodes.Outputs) do
+		gate.Signals[output] = false
 	end
 	
-	local gate = {}
-	do	
-		gate.Id = nextId
-		gate.OwnerId = owner
-		gate.Model = model
-		gate.Nodes = { Outputs = {}, Inputs = {}, Signals = {} }
-		gate.Visuals = visuals
-		for _, output in ipairs(specification.Nodes.Outputs) do gate.Nodes.Outputs[output] = { }; gate.Nodes.Signals[output] = false end
-		for _, input in ipairs(specification.Nodes.Inputs) do gate.Nodes.Inputs[input] = { } end
-		gate.Attributes = {}
-		for name, specification in pairs(specification.AttributeData) do gate.Attributes[name] = if attributes[name] ~= nil then attributes[name] else specification.Default end
-		setmetatable(gate, { __index = specification } )
+	for name, attributeSpecification in pairs(specification.AttributeData) do
+		gate.Attributes[name] = Attributes.GetOrDefault(attributes[name], attributeSpecification)
 	end
-	Instances[nextId] = gate
+	
+	setmetatable(gate, { __index = specification } )
+	
+	-- Registers the instance
+	Instances[currentID] = gate
 	
 	if specification.Setup then specification.Setup(gate) end
-	Updates.Propagate(nextId)
-
-	-- BOILERPLATE FOR SWITCH AND BUTTON
-	if gate.ClickDetector then gate.ClickDetector.MouseClick:Connect(function(player) GateService.Interact(gate.Id, player) end) end
+	Updates.Propagate(currentID)
 	
-	nextId = nextId + 1
-	return nextId - 1
+	return currentID
 end
 
-function GateService.ApplyVisuals(gateID: TGateID, nextVisuals: any)
-	local gate = Instances[gateID]
-	assert(gate, "Gate " .. gateID .. " does not exist")
+-- ALL THIS IS BULLSHIT -- ALL THIS IS BULLSHIT -- ALL THIS IS BULLSHIT -- ALL THIS IS BULLSHIT -- ALL THIS IS BULLSHIT --
+-- function GateService.ApplyVisuals(gateID: TGateID, nextVisuals: any)
+-- 	local gate = Instances[gateID]
+-- 	assert(gate, "Gate " .. gateID .. " does not exist")
 
-	local specification = getSpecificationForGate(gate)
-	local visuals = Visuals.CompleteWithDefaults(
-		Visuals.Clone(nextVisuals or {}),
-		specification.Name,
-		#specification.Nodes.Inputs,
-		#specification.Nodes.Outputs,
-		specification.DefaultVisuals
-	)
+-- 	local specification = getSpecificationForGate(gate)
+-- 	local visuals = Visuals.CompleteWithDefaults(
+-- 		Visuals.Clone(nextVisuals or {}),
+-- 		specification.Name,
+-- 		#specification.Nodes.Inputs,
+-- 		#specification.Nodes.Outputs,
+-- 		specification.DefaultVisuals
+-- 	)
 
-	local oldModel = gate.Model
-	local newModel: Model = Models.new(specification.Nodes, visuals)
-	newModel:PivotTo(oldModel:GetPivot())
-	newModel:SetAttribute("GateId", gateID)
-	newModel.Name = specification.Name
-	newModel.Parent = oldModel.Parent
+-- 	local oldModel = gate.Model
+-- 	local newModel: Model = Models.new(specification.Nodes, visuals)
+-- 	newModel:PivotTo(oldModel:GetPivot())
+-- 	newModel:SetAttribute("GateId", gateID)
+-- 	newModel.Name = specification.Name
+-- 	newModel.Parent = oldModel.Parent
 
-	gate.Model = newModel
-	gate.Visuals = visuals
+-- 	gate.Model = newModel
+-- 	gate.Visuals = visuals
 
-	remapModelReferences(gate, oldModel, newModel)
-	Connections.RebindGate(gateID, newModel :: any)
+-- 	remapModelReferences(gate, oldModel, newModel)
+-- 	Connections.RebindGate(gateID, newModel :: any)
 
-	oldModel:Destroy()
-	Updates.Propagate(gateID)
+-- 	oldModel:Destroy()
+-- 	Updates.Propagate(gateID)
 
-	return Visuals.Clone(visuals)
-end
+-- 	return Visuals.Clone(visuals)
+-- end
+-- ALL THIS WAS BULLSHIT -- ALL THIS WAS BULLSHIT -- ALL THIS WAS BULLSHIT -- ALL THIS WAS BULLSHIT -- ALL THIS WAS BULLSHIT --
 
-function GateService.Interact(gateID: TGateID, player: Player)
-	local gate = Instances[gateID]
-	assert(gate, "Gate " .. gateID .. " does not exist")
+function GateService.Update(gateID: TGateID, payload)
+	assert(Instances[gateID], "Can't interact with gate " .. gateID .. ". Reason: Gate is not a currently registered instance.")
 	
-	Updates.Propagate(gateID, { Source = "Interaction", Player = player } )
+	Updates.Propagate(gateID, payload)
 end
 
 function GateService.Move(gateID: TGateID, to: CFrame)
+	assert(Instances[gateID], "Can't move gate " .. gateID .. ". Reason: Gate is not a currently registered instance.")
 	local gate = Instances[gateID]
-	assert(gate, "Gate " .. gateID .. " does not exist")
 	
 	gate.Model:PivotTo(to)
 	
 	-- Move all in connections
-	for inputName, nodeInstance in pairs(gate.Nodes.Inputs) do
+	for _, inputName in ipairs(gate.Nodes.Inputs) do
 		for _, wire in ipairs(Connections.GetIncoming(gateID, inputName)) do
 			Connections.UpdateCFrame(wire)
 		end
 	end
 	
 	-- Move all out connections
-	for outputName, nodeInstance in pairs(gate.Nodes.Outputs) do
+	for _, outputName in ipairs(gate.Nodes.Outputs) do
 		for _, wire in ipairs(Connections.GetOutgoing(gateID, outputName)) do
 			Connections.UpdateCFrame(wire)
 		end
 	end
 end
 
--- Self connections are allowed!
-function GateService.Connect(fromID: TGateID, toID: TGateID, Nodes: { from: TNodeName, to: TNodeName } )
-	local fromGate, toGate = Instances[fromID], Instances[toID]
-	assert(fromGate, "Gate " .. fromID .. " does not exist")
-	assert(toGate, "Gate " .. toID .. " does not exist")
-	assert(fromGate.Nodes.Outputs[Nodes.from], "Node " .. Nodes.from .. " is not in gate " .. fromID)
-	assert(toGate.Nodes.Inputs[Nodes.to], "Node " .. Nodes.to .. " is not in gate " .. toID)
+function GateService.Connect(fromID: TGateID, toID: TGateID, fromNode: TNodeName, toNode: TNodeName )
+	local fromGate = Instances[fromID]
+	assert(fromGate, "Can't make connection from gate " .. fromID .. ". Reason: Gate is not a currently registered instance.")
+	assert(table.find(fromGate.Nodes, fromNode), "Can't make connection from gate " .. fromID .. ", output \"" .. fromNode .. "\". Reason: Gate has no such output node.")
 	
-	local fromNode, toNode = fromGate.Nodes.Outputs[Nodes.from], toGate.Nodes.Inputs[Nodes.to]
-	assert(not (fromNode[toID] and fromNode[toID][Nodes.to]), "Connection from Gate " .. fromID .. ", Output " .. Nodes.from .. " to Gate " .. toID .. ", Input " .. Nodes.to .. " already exists (Out triggered)")
-	assert(not (toNode[fromID] and toNode[fromID][Nodes.from]), "Connection from Gate " .. fromID .. ", Output " .. Nodes.from .. " to Gate " .. toID .. ", Input " .. Nodes.to .. " already exists (In triggered)")
+	local toGate = Instances[toID]
+	assert(toGate, "Can't make connection to gate " .. toID .. ". Reason: Gate is not a currently registered instance.")
+	assert(table.find(toGate.Nodes, toNode), "Can't make connection to gate " .. toID .. ", input \"" .. toNode .. "\". Reason: Gate has no such input node.")
 	
-	fromNode[toID] = fromNode[toID] or {}; fromNode[toID][Nodes.to] = true
-	toNode[fromID] = toNode[fromID] or {}; toNode[fromID][Nodes.from] = true
+	assert(not Connections.AreConnected(fromID, toID, fromNode, toNode), "Can't make connection from gate " ..  fromID .. ", output \"" .. fromNode .. "\" to gate " .. toID .. ", input \"" .. toNode .. "\". Reason: Connection already exists.")
 	
-	local wire = Connections.new(fromID, toID, fromGate.Model.Nodes[Nodes.from], toGate.Model.Nodes[Nodes.to])
-	Connections.UpdateCFrame(wire)
+	-- Register the connection
+	local wire = Connections.new(fromID, toID, fromGate.Model.Nodes[fromNode], toGate.Model.Nodes[toNode])
 	
-	Updates.RegisterVisualChange(wire, { Color = ColorSequence.new(if Signals.toBoolean(fromGate.Nodes.Signals[Nodes.from]) then Color3.new(0.9, 0.9, 1) else Color3.new(0, 0, 0.1)) })
+	Updates.RegisterVisualChange(wire, { Color = ColorSequence.new(if Signals.toBoolean(fromGate.Nodes.Signals[fromNode]) then Color3.new(0.9, 0.9, 1) else Color3.new(0, 0, 0.1)) })
 	Updates.Propagate(toID)
 end
 
-function GateService.Disconnect(fromID: TGateID, toID: TGateID, Nodes: { from: TNodeName, to: TNodeName } )
-	local fromGate, toGate = Instances[fromID], Instances[toID]
-	assert(fromGate, "Gate " .. fromID .. " does not exist")
-	assert(toGate, "Gate " .. toID .. " does not exist")
-	assert(fromGate.Nodes.Outputs[Nodes.from], "Node " .. Nodes.from .. " is not in gate " .. fromID)
-	assert(toGate.Nodes.Inputs[Nodes.to], "Node " .. Nodes.to .. " is not in gate " .. toID)
+function GateService.Disconnect(fromID: TGateID, toID: TGateID, fromNode: TNodeName, toNode: TNodeName )
+	local fromGate = Instances[fromID]
+	assert(fromGate, "Can't destroy connection from gate " .. fromID .. ". Reason: Gate is not a currently registered instance.")
+	assert(table.find(fromGate.Nodes, fromNode), "Can't destroy connection from gate " .. fromID .. ", output \"" .. fromNode .. "\". Reason: Gate has no such output node.")
 	
-	local fromNode, toNode = fromGate.Nodes.Outputs[Nodes.from], toGate.Nodes.Inputs[Nodes.to]
-	assert(fromNode[toID] and fromNode[toID][Nodes.to], "Connection from Gate " .. fromID .. ", Output " .. Nodes.from .. " to Gate " .. toID .. ", Input " .. Nodes.to .. " does not exist (Out triggered)")
-	assert(toNode[fromID] and toNode[fromID][Nodes.from], "Connection from Gate " .. fromID .. ", Output " .. Nodes.from .. " to Gate " .. toID .. ", Input " .. Nodes.to .. " does not exist (In triggered)")
+	local toGate = Instances[toID]
+	assert(toGate, "Can't destroy connection to gate " .. toID .. ". Reason: Gate is not a currently registered instance.")
+	assert(table.find(toGate.Nodes, toNode), "Can't destroy connection to gate " .. toID .. ", input \"" .. toNode .. "\". Reason: Gate has no such input node.")
 	
-	fromNode[toID][Nodes.to] = nil
-	toNode[fromID][Nodes.from] = nil
-	if next(fromNode[toID]) == nil then fromNode[toID] = nil end
-	if next(toNode[fromID]) == nil then toNode[fromID] = nil end
+	assert(Connections.AreConnected(fromID, toID, fromNode, toNode), "Can't destroy connection from gate " ..  fromID .. ", output \"" .. fromNode .. "\" to gate " .. toID .. ", input \"" .. toNode .. "\". Reason: Connection is not registered.")
+	
+	Connections.Disconnect(fromID, toID, fromNode, toNode)
+	-- fromNode[toID][Nodes.to] = nil
+	-- toNode[fromID][Nodes.from] = nil
+	-- if next(fromNode[toID]) == nil then fromNode[toID] = nil end
+	-- if next(toNode[fromID]) == nil then toNode[fromID] = nil end
 
-	local wires = Connections.GetOutgoing(fromID, Nodes.from)
-	for i = #wires, 1, -1 do
-		local wire = wires[i]
-		local matches = wire:GetAttribute("ToGate") == toID and wire:GetAttribute("ToNode") == Nodes.to
-		if matches then
-			Connections.Destroy(wire)
-		end
-	end
+	-- local wires = Connections.GetOutgoing(fromID, Nodes.from)
+	-- for i = #wires, 1, -1 do
+	-- 	local wire = wires[i]
+	-- 	local matches = wire:GetAttribute("ToGate") == toID and wire:GetAttribute("ToNode") == Nodes.to
+	-- 	if matches then
+	-- 		Connections.Destroy(wire)
+	-- 	end
+	-- end
 
 	Updates.Propagate(toID)
 end
 
 function GateService.Destroy(gateID: TGateID)
 	local gate = Instances[gateID]
-	assert(gate, "Gate " .. gateID .. " does not exist")
-
+	assert(gate, "Can't destroy gate " .. gateID .. ". Reason: Gate is not a currently registered instance.")
+	
 	Updates.CancelAllWakeups(gateID)
 	
-	-- Disconnect all out connections
-	for outputName, nodeInstance in pairs(gate.Nodes.Outputs) do
-		for toGateID, inputs in pairs(nodeInstance) do
-			for inputName in pairs(inputs) do
-				GateService.Disconnect(gateID, toGateID, { from = outputName, to = inputName } )
-			end
-			nodeInstance[toGateID] = nil
-		end
-	end
-	
 	-- Disconnect all in connections
-	for inputName, nodeInstance in pairs(gate.Nodes.Inputs) do
-		for fromGateID, outputs in pairs(nodeInstance) do
-			for outputName in pairs(outputs) do
-				GateService.Disconnect(fromGateID, gateID, { from = outputName, to = inputName } )
-			end
-			nodeInstance[fromGateID] = nil
+	for _, inputName in ipairs(gate.Nodes.Inputs) do
+		for _, wire in ipairs(Connections.GetIncoming(gateID, inputName)) do
+			GateService.Disconnect(wire:GetAttribute("FromGate"), gateID, wire:GetAttribute("FromNode"), wire:GetAttribute("ToNode"))
 		end
 	end
-
+	
+	-- Disconnect all out connections
+	for _, outputName in ipairs(gate.Nodes.Outputs) do
+		for _, wire in ipairs(Connections.GetOutgoing(gateID, outputName)) do
+			GateService.Disconnect(gateID, wire:GetAttribute("ToGate"), wire:GetAttribute("FromNode"), wire:GetAttribute("ToNode"))
+		end
+	end
+	
+	Models.Destroy(gate.Model)
+	
 	Instances[gateID] = nil
-	gate.Model:Destroy()
 end
 
--- INPUT READS and WRITES
-
-function GateService.ReadAttribute(gateID: TGateID, attributeName: TAttributeName, nodeName: TNodeName?): (boolean, any)
+function GateService.ReadAttributeFromNode(gateID: TGateID, attributeName: TAttributeName, targetNode: TNodeName)
 	local gate = Instances[gateID]
-	assert(gate, "Gate " .. gateID .. " does not exist")
-
+	assert(gate, "Can't read attribute from input from gate " .. gateID .. ". Reason: Gate is not a currently registered instance.")
+	assert(targetNode, "Can't read attribute from input from gate " .. gateID .. ", input \"" .. targetNode .. "\". Reason: Gate has no such input node.")
+	
 	local attribute = gate.Attributes[attributeName]
-	assert(attribute ~= nil, "Gate " .. gateID .. " has no attribute " .. attributeName)
-
-	if nodeName then
-		local inputNode: TNodeInstance = gate.Nodes.Inputs[nodeName]
-		assert(inputNode, "Gate " .. gateID .. " has no node " .. nodeName)
-
-		local signals = {}
-		for fromGateID, outputs in pairs(inputNode) do
-			local fromGate = Instances[fromGateID]
-			assert(fromGate, "Gate " .. fromGateID .. " does not exist, but is registered as input of gate " .. gateID)
-			for outputNode in pairs(outputs) do
-				assert(fromGate.Nodes.Outputs[outputNode], "Gate " .. fromGateID .. " is connected to " .. gateID .. " from '" .. outputNode .. "' output node, but it doesnt exist")
-				assert(fromGate.Nodes.Signals[outputNode] ~= nil, "Gate " .. fromGateID .. " is missing '" .. outputNode .. "' output node key in Signals table")
-				table.insert(signals, fromGate.Nodes.Signals[outputNode])
-			end
-		end
-
-		if next(signals) == nil then return false, attribute end
-
-		local raw = Signals.Collapse(signals)
-		return true, {
-			Raw = raw,
-			AsString = function() return Signals.toString(raw) end,
-			AsNumber = function() return Signals.toNumber(raw) end,
-			AsBoolean = function() return Signals.toBoolean(raw) end
-		}
-	else
-		return false, attribute
-	end
+	assert(attribute ~= nil, "Can't read attribute \"" .. attributeName .. "\" from input from gate " .. gateID .. ". Reason: Gate has no such attribute.")
+	
+	return if next(Connections.GetIncoming(gateID, targetNode)) == nil
+		then attribute
+		else gate:ReadInput(targetNode)
 end
 
-function GateService.ReadInput(gateID: TGateID, nodeName: TNodeName)
-	local gate = Instances[gateID]
-	assert(gate, "Gate " .. gateID .. " does not exist")
+function GateService.ReadInput(gateID: TGateID, targetNode: TNodeName)
+	assert(Instances[gateID], "Can't read input from gate " .. gateID .. ". Reason: Gate is not a currently registered instance.")
+	assert(targetNode, "Can't read input from gate " .. gateID .. ", input \"" .. targetNode .. "\". Reason: Gate has no such input node.")
 	
-	local inputNode: TNodeInstance = gate.Nodes.Inputs[nodeName]
-	assert(inputNode, "Gate " .. gateID .. " has no node " .. nodeName)
-
 	local signals = {}
-	for fromGateID, outputs in pairs(inputNode) do
-		local fromGate = Instances[fromGateID]
-		assert(fromGate, "Gate " .. fromGateID .. " does not exist, but is registered as input of gate " .. gateID)
-		for outputNode in pairs(outputs) do
-			assert(fromGate.Nodes.Outputs[outputNode], "Gate " .. fromGateID .. " is connected to " .. gateID .. " from '" .. outputNode .. "' output node, but it doesnt exist")
-			assert(fromGate.Nodes.Signals[outputNode] ~= nil, "Gate " .. fromGateID .. " is missing '" .. outputNode .. "' output node key in Signals table")
-			table.insert(signals, fromGate.Nodes.Signals[outputNode])
-		end
+	for _, wire in ipairs(Connections.GetIncoming(gateID, targetNode)) do
+		local fromGateID = wire:GetAttribute("FromGate")
+		local fromNode = wire:GetAttribute("FromNode")
+		assert(Instances[fromGateID], "Can't read output from gate " .. fromGateID .. ". Reason: Gate is not a currently registered instance.")
+		assert(fromNode, "Can't read output from gate " .. gateID .. ", output \"" .. fromNode .. "\". Reason: Gate has no such input node.")
+		assert(Connections.AreConnected(fromGateID, gateID, fromNode, targetNode), "Can't read output from gate " .. fromGateID .. ", output \"" .. fromNode .. "\" when reading gate " .. gateID .. ", input \"" .. targetNode .. "\". Reason: Connection is not registered.")
+		
+		table.insert(signals, Instances[fromGateID].Signals[fromNode])
 	end
-	
 	local raw = Signals.Collapse(signals)
+	
 	return {
 		Raw = raw,
-		AsString = function() return Signals.toString(raw) end,
-		AsNumber = function() return Signals.toNumber(raw) end,
+		AsString  = function() return Signals.toString(raw)  end,
+		AsNumber  = function() return Signals.toNumber(raw)  end,
 		AsBoolean = function() return Signals.toBoolean(raw) end
 	}
 end
 
-function GateService.TrySetAttribute(gateID: TGateID, attribute: string, value: string | number | boolean)
+function GateService.SetAttributeOrDefault(gateID: TGateID, attributeName: string, value: string | number | boolean)
 	local gate = Instances[gateID]
-	assert(gate, "Gate " .. gateID .. " does not exist")
-	assert(gate.Attributes[attribute] ~= nil, "Gate " .. gateID .. " has no attribute '" .. attribute .. "'")
+	assert(gate, "Can't set attribute of gate " .. gateID .. ". Reason: Gate is not a currently registered instance.")
+	assert(gate.Attributes[attributeName] ~= nil, "Can't set attribute \"" .. attributeName .. "\" of gate " .. gateID .. ". Reason: Gate has no such attribute.")
 	
-	gate.Attributes[attribute] = Attributes.Get(value, gate.AttributeData[attribute])
+	gate.Attributes[attributeName] = Attributes.GetOrDefault(value, gate.AttributeData[attributeName])
 	Updates.Propagate(gateID)
 end
 
+-- ----------------------------- -------- INITIALIZE SUBMODULES ---------- -----------------------------
 
---[[ --------------------------- -------------- DEBUGGING --------------- -----------------------------]]
-
-function GateService.VisualizeSignal(startID: TGateID, maxSteps: number?)
-	maxSteps = maxSteps or 10
-	
-	local startGate = Instances[startID]
-	assert(startGate, "Gate " .. startID .. " does not exist")
-	
-	print("========== SIGNAL TREE ==========")
-	
-	-- ===== helpers =====
-	
-	local function getInputs(targetId)
-		local list = {}
-		
-		for gateId, gate in pairs(Instances) do
-			for outputName, connections in pairs(gate.Nodes.Outputs) do
-				for tId, nodeMap in pairs(connections) do
-					if tId == targetId then
-						for toNodeName in pairs(nodeMap) do
-							table.insert(list, {
-								id = gateId,
-								label = outputName .. " -> " .. toNodeName
-							})
-						end
-					end
-				end
-			end
-		end
-		
-		return list
-	end
-	
-	local function getOutputs(gate)
-		local list = {}
-		
-		for outputName, connections in pairs(gate.Nodes.Outputs) do
-			for targetGateId, nodeMap in pairs(connections) do
-				for toNodeName in pairs(nodeMap) do
-					table.insert(list, {
-						id = targetGateId,
-						label = outputName .. " -> " .. toNodeName
-					})
-				end
-			end
-		end
-		
-		return list
-	end
-	
-	-- ===== PASS 1: DIRECT INPUTS =====
-	
-	local inputs = getInputs(startID)
-	
-	if #inputs > 0 then
-		print("INCOMING")
-		for _, conn in ipairs(inputs) do
-			print(" | Gate " .. conn.id .. " (" .. conn.label .. ")")
-		end
-	end
-	
-	-- ===== PASS 2: OUTPUT TREE =====
-	
-	local visited = {}
-	
-	local function traverse(gateId, prefix, isLast, depth, label)
-		if depth > maxSteps then return end
-		
-		local gate = Instances[gateId]
-		if not gate then return end
-		
-		local connector = depth > 0 and (isLast and "└── " or "├── ") or ""
-		
-		-- cycle detection
-		if visited[gateId] then
-			print(prefix .. connector .. "↺ Gate " .. gateId)
-			return
-		end
-		
-		visited[gateId] = true
-		
-		if label then
-			print(prefix .. connector .. "Gate " .. gateId .. " (" .. label .. ")")
-		else
-			print(prefix .. "Gate " .. gateId)
-		end
-		
-		local outputs = getOutputs(gate)
-		
-		for i, conn in ipairs(outputs) do
-			local newPrefix = prefix
-			if depth > 0 then
-				newPrefix = newPrefix .. (isLast and "    " or "│   ")
-			end
-			
-			traverse(
-				conn.id,
-				newPrefix,
-				i == #outputs,
-				depth + 1,
-				conn.label
-			)
-		end
-	end
-	
-	-- Root + outputs
-	traverse(startID, "", true, 0, nil)
-	
-	print("================================")
-end
-
--- ----------------------------- ---------- LOAD SPECIFICATIONS ---------- -----------------------------
-
-LoadSpecifications()
+-- TODO: Remove this crap
+-- LoadSpecifications()
 Updates.Initialize(Instances)
 
--- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
+-- ----------------------------- ------------ END OF MODULE -------------- -----------------------------
 
 return GateService
