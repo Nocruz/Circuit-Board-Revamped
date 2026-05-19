@@ -80,6 +80,7 @@ function Style.UpdateVisuals(model, visuals)
 	-- Apply main visuals
 	main.Color = visuals.MainColor
 	main.Material = visuals.MainMaterial
+	main.DisplayNameGui.TextLabel.Text = visuals.DisplayName
 	
 	local activeEdges = { front = false, back = false, left = false, right = false }
 	-- Visual's node offsets

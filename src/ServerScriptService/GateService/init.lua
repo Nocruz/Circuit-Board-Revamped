@@ -45,7 +45,7 @@ export type TSpecification = {
 	Nodes: { Outputs: { string }, Inputs: { string } },
 	AttributeData: { [TAttributeName]: TAttributeSpecification },
 	DefaultVisuals: TVisuals,
-	ModelType: TModelType,
+	ModelTypes: { TModelType },
 	
 	Setup: (gate: TGateInstance) -> (),
 	Process: (self: TGateInstance) -> ()
@@ -81,7 +81,6 @@ function GateService.RegisterSpecification(name: string, specification: TSpecifi
 	data.DefaultVisuals = data.DefaultVisuals or {}
 	if (data.DefaultVisuals.DisplayName == nil) then data.DefaultVisuals.DisplayName = name end
 	data.AttributeData = data.AttributeData or {}
-	data.ModelType = data.ModelType or "Basic"
 	setmetatable(data, BaseGateUtils)
 	
 	Specifications[name] = data
@@ -204,7 +203,7 @@ end
 -- end
 -- ALL THIS WAS BULLSHIT -- ALL THIS WAS BULLSHIT -- ALL THIS WAS BULLSHIT -- ALL THIS WAS BULLSHIT -- ALL THIS WAS BULLSHIT --
 
-function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecificationName, cframe: CFrame, extras: { Style: Models.TStyleType?, Visuals: Models.TVisuals?, Attributes: TAttribute? }? ): TGateID
+function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecificationName, cframe: CFrame, extras: { Style: string?, Visuals: Models.TVisuals?, Attributes: TAttribute? }? ): TGateID
 	-- print("Instantiating gate. Specification: " .. specificationName .. ", ID: " .. currentID .. ", Owner: ".. owner .. ", CFrame: ", tostring(cframe))
 	currentID = currentID + 1
 	
@@ -215,21 +214,11 @@ function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecifica
 	-- Loads extras
 	extras = extras or {}; assert(extras ~= nil, "Can't instantiate gate. Reason: Extras table was nil (Unreachable code).")
 	
-	local styleName = extras.Style or "Classic"
-	local styleDefaultVisuals = Models.GetStyleDefaults(styleName, { Input = #specification.Nodes.Inputs, Output = #specification.Nodes.Outputs })
-	
-	local visuals = extras.Visuals or {}
-	setmetatable(visuals, { __index = function(_, key)
-		local specificationValue = specification.DefaultVisuals[key]
-		return if specificationValue ~= nil
-			then specificationValue
-			else styleDefaultVisuals[key]
-	end})
-	
 	local attributes = extras.Attributes or {}
+	local visuals = extras.Visuals or {}
 	
 	-- Loads the model
-	local model = Models.Instantiate(specification.ModelType, specification.Nodes, styleName, visuals)
+	local model = Models.Instantiate(specification.ModelTypes, specification.Nodes, extras.Style, visuals, specification.DefaultVisuals)
 		model.Instance:PivotTo(cframe)
 		model.Instance:SetAttribute("GateId", currentID)
 		model.Instance.Name = specificationName
@@ -263,6 +252,24 @@ function GateService.Instantiate(owner: TPlayerID, specificationName: TSpecifica
 	Updates.Propagate(currentID)
 	
 	return currentID
+end
+
+function GateService.SwapStyle(gateID: TGateID, style: string)
+	local gate = Instances[gateID]
+	assert(gate, "Can't swap style of gate " .. gateID.. ". Reason: Gate is not a currently registered instance.")
+	
+	local gateData = {
+		Model = gate.Model,
+		Specification = {
+			ModelTypes = gate.ModelTypes,
+			DefaultVisuals = gate.DefaultVisuals,
+			Nodes = gate.Nodes
+		},
+		Visuals = gate.Model.Visuals,
+		NodeCount = { Input = #gate.Nodes.Inputs, Output = #gate.Nodes.Outputs },
+	}
+	
+	gate.Model = Models.SwapStyle(gateData, style)
 end
 
 -- ALL THIS IS BULLSHIT -- ALL THIS IS BULLSHIT -- ALL THIS IS BULLSHIT -- ALL THIS IS BULLSHIT -- ALL THIS IS BULLSHIT --
