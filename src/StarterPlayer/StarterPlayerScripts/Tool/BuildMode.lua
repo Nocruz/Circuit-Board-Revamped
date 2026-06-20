@@ -1,9 +1,8 @@
---!strict
 --[[ BUILD MODE
-		Singleton that handles the "Building" state most tools use
+		Singleton that handles the "Building" state Supplies and Tweezers use.
 		That means spawning the preview model, rotating it,
-		  snapping it to the grid, confirming the build,
-		  cancelling or destroying.
+			snapping it to the grid, confirming the build,
+			cancelling or destroying.
 ]]
 
 -- Requires and services
@@ -17,10 +16,6 @@ local GridService = require(ReplicatedStorage.GridService)
 -- References
 local Terrain = workspace:WaitForChild("Terrain")
 local Baseplate = Terrain.Baseplate
-
--- Debugging
-local Logger = require(ReplicatedStorage.LoggerService)
-local log = Logger.new("BuildMode")
 
 -- Visuals
 local BuildModeGuis = ReplicatedStorage.Client.UI.BuildMode

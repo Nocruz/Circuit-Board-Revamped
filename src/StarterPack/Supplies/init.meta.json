@@ -1,4 +1,7 @@
 {
-  "className": "Tool",
-  "ignoreUnknownInstances": true
+	"className": "Tool",
+	"properties": {
+		"Grip": [0.5, 0, 0, 0, 0, 1, 0, 1, 0 ,-1 ,0, 0]
+	},
+	"ignoreUnknownInstances": true
 }
