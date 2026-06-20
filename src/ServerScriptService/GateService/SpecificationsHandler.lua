@@ -30,7 +30,10 @@ function SpecificationsHandler.Debug()
 		for index, nodeName in pairs(specification.Nodes.Outputs) do
 			print("\t\tIndex: " .. index .. ", Name: \"" .. nodeName .. "\"")
 		end
-		print("\tAttributeData: [NOT IMPLEMENTED]")
+		print("\tAttributeData:")
+		for attributeName, data in pairs(specification.AttributeData) do
+			print("\t\tName: \"" .. attributeName .. "\", { Default: " .. data.Default .. ", Predicate count: " .. #data.Predicates .. ", Allowed Values: " .. if data.AllowedValues == nil then "Not specified" elseif #data.AllowedValues == 0 then "None" else table.concat(data.AllowedValues, ","))
+		end
 		print("\tDefaultVisuals:")
 		for key, value in pairs(specification.DefaultVisuals) do
 			print("\t\tKey: \"" .. key .. "\", Value: \"" .. tostring(value) .. "\"" )
