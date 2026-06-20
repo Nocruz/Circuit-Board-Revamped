@@ -5,8 +5,8 @@
 ]]
 
 -- Requires and Services
-local GatesHandler = require(script.GatesHandler)
-local SpecificationsHandler = require(script.SpecificationsHandler)
+local GatesHandler = require(script.Handlers.GatesHandler)
+local SpecificationsHandler = require(script.Handlers.SpecificationsHandler)
 
 local Models = require(script.Models)
 
