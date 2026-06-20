@@ -1,0 +1,1 @@
+wt.exe -d "C:\Users\juanm\Code\RobloxStudio\CBRevamped" --title Rojo-Connection --tabColor '#2727B0' mise x github:rojo-rbx/rojo -- rojo serve `; split-pane mise x github:rojo-rbx/rojo -- rojo sourcemap --watch default.project.json --output sourcemap.json
