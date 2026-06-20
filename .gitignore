@@ -1,3 +1,6 @@
+# Assets
+/assets
+
 # Project place file
 /CBRevamped.rbxlx
 /Circuit Board_Revamped.rbxl
@@ -8,5 +11,8 @@
 # Roblox Studio lock files
 /*.rbxlx.lock
 /*.rbxl.lock
+
+# AI REFACTOR BULLS - AI STILL SUCKS IN 2026
+/AI_src
 
 sourcemap.json
