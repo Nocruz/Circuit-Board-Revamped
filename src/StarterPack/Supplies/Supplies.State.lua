@@ -11,6 +11,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local LocalServices = StarterPlayer.StarterPlayerScripts.Services
+local MessageService = require(StarterPlayer.StarterPlayerScripts.Services.MessageService)
 local PointerService = require(LocalServices.PointerService)
 local GridService = require(ReplicatedStorage.GridService)
 
@@ -21,6 +22,10 @@ local gridTexturePrefab: Texture = buildModeGuiFolder.Grid
 local nameGuiPrefab: BillboardGui = buildModeGuiFolder.MoveNamePopup
 
 local Terrain = Workspace:WaitForChild("Terrain")
+
+-- Events
+local permissionQuery: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Queries"):WaitForChild("Permission")
+local spawnEvent: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("Spawn")
 
 -- State definition
 local State = {}
@@ -132,15 +137,24 @@ function State:Activated()
 	if self.Active then -- We are placing the gate
 		local context = DeactivationContext()
 		if context == "Valid" then
-			print("MOCK: Valid spawn!")
+			local success, message = spawnEvent:InvokeServer(self.Gate:GetAttribute("GateID"), self.Ghost:GetPivot())
+			if not success then
+				MessageService.SendMessage(message)
+			end
 		else
-			print("MOCK: Invalid spawn!")
+			print("Canceled spawn!")
 		end
 		
 		self:CleanUpGhost()
-	else -- We a copying the gate
+	else -- We are copying the gate
 		self.Gate = PointerService.HoveredGate
 		if self.Gate == nil then return end
+		
+		local success, message = permissionQuery:InvokeServer(self.Gate:GetAttribute("GateID"), "Spawn")
+		if not success then
+			MessageService.SendMessage(message)
+			return
+		end
 		
 		self.Ghost = self.Gate:Clone()
 		self.Ghost.Parent = Workspace

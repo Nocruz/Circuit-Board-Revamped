@@ -13,7 +13,7 @@ local labelPrefab: TextLabel = messageGui:WaitForChild("FeedbackMessagePrefab")
 
 -- Constants
 local duration = 2 -- seconds
-local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
 -- ----------------------------- ----------- MODULE DEFINITION ----------- -----------------------------
 

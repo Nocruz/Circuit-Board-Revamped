@@ -18,7 +18,7 @@ export type PermissionData = {
 
 -- ----------------------------- ---------------- HANDLER ---------------- -----------------------------
 
-local PermissionService = {}
+local Permissions = {}
 local Handler: { [number]: PermissionData } = {
 	[0] = {
 		Modes = {
@@ -38,7 +38,7 @@ local Handler: { [number]: PermissionData } = {
 
 -- ----------------------------- ------------- REGISTRATIONS ------------- -----------------------------
 
-function PermissionService.RegisterPlayer(userId: number)
+function Permissions.RegisterPlayer(userId: number)
 	if Handler[userId] then return end
 	
 	Handler[userId] = {
@@ -57,25 +57,25 @@ function PermissionService.RegisterPlayer(userId: number)
 	}
 end
 
-function PermissionService.UnregisterPlayer(userId: number)
+function Permissions.UnregisterPlayer(userId: number)
 	Handler[userId] = nil
 end
 
 -- ----------------------------- -------------- PERMISSIONS -------------- -----------------------------
 
-function PermissionService.SetMode(ownerId: number, action: ActionType, mode: PermissionMode): ()
+function Permissions.SetMode(ownerId: number, action: ActionType, mode: PermissionMode): ()
 	if Handler[ownerId] then
 		Handler[ownerId].Modes[action] = mode
 	end
 end
 
-function PermissionService.GrantPermission(ownerId: number, targetId: number, action: ActionType): ()
+function Permissions.GrantPermission(ownerId: number, targetId: number, action: ActionType): ()
 	if Handler[ownerId] then
 		Handler[ownerId].Players[action][targetId] = true
 	end
 end
 
-function PermissionService.RevokePermission(ownerId: number, targetId: number, action: ActionType): ()
+function Permissions.RevokePermission(ownerId: number, targetId: number, action: ActionType): ()
 	if Handler[ownerId] then
 		Handler[ownerId].Players[action][targetId] = nil
 	end
@@ -83,11 +83,11 @@ end
 
 -- ----------------------------- ---------------- GETTERS ---------------- -----------------------------
 
-function PermissionService.IsValidAction(action: string): boolean
+function Permissions.IsValidAction(action: string): boolean
 	return ACTIONS[action] or false
 end
 
-function PermissionService.CanPlayerDo(userId: number, ownerId: number, action: ActionType, objectType: string?): boolean
+function Permissions.CanPlayerDo(userId: number, ownerId: number, action: ActionType, objectType: string?): boolean
 	-- Server rules above all
 	if userId == 0 then return true end
 	
@@ -112,4 +112,4 @@ end
 	
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
 
-return PermissionService
+return Permissions

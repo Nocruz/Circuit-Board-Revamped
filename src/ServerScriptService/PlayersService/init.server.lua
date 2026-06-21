@@ -8,6 +8,8 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
 local Permissions = require(script.Permissions)
+local Interactions = require(script.Interactions)
+local GateService = require(script.Parent.GateService)
 
 -- References
 local gatesFolder = Workspace:FindFirstChild("Gates")
@@ -27,7 +29,6 @@ Players.PlayerAdded:Connect(function(player: Player)
 			task.cancel(destroyAllGatesTimeouts[player.UserId])
 			destroyAllGatesTimeouts[player.UserId] = nil
 		end
-		-- Cancel destruction timeout
 	else
 		local folder = Instance.new("Folder") do
 			folder.Name = stringID
@@ -49,4 +50,27 @@ Players.PlayerRemoving:Connect(function(player: Player, reason: Enum.PlayerExitR
 		
 		destroyAllGatesTimeouts[player.UserId] = nil
 	end)
+	
+	Permissions.UnregisterPlayer(player.UserId)
+end)
+
+-- ----------------------------- ------------ CLIENT REQUESTS ------------ -----------------------------
+
+-- Permission request
+Interactions.CreateQuery("Permission", { "GateID", "Action" }, function(player: Player, gate, action: Permissions.ActionType)
+	if not Permissions.CanPlayerDo(player.UserId, gate.OwnerID, action, gate.Specification.Name) then
+		return false, "Player " .. tostring(player.UserId) .. " lacks permissions to " .. action .. " a gate owned by " .. gate.OwnerId
+	end
+	
+	return true		
+end)
+
+-- Gate spawner
+Interactions.CreateEvent("Spawn", { "GateID", "CFrame" }, function(player: Player, gate, cframe: CFrame)
+	if not Permissions.CanPlayerDo(player.UserId, gate.OwnerID, "Spawn", gate.Specification.Name) then
+		return false, "Lacks permissions to spawn a gate of this type"
+	end		
+	
+	GateService.Instantiate(player.UserId, gate.Specification.Name, cframe, gate.Visuals, gate.Attributes)
+	return true
 end)

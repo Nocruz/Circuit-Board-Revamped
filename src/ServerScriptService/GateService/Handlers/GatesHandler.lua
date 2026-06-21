@@ -13,6 +13,10 @@ function GatesHandler.Add(id: number, gate)
 	instances[id] = gate
 end
 
+function GatesHandler.Get(id: number)
+	return instances[id]
+end
+
 function GatesHandler.Debug()
 	print("Debugging gate instances:")
 	for id, gate in pairs(instances) do
