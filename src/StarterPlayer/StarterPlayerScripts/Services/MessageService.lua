@@ -1,35 +1,37 @@
-local MessageService = {}
+--[[ MESSAGE SERVICE
+		Provides API to communicate with the user without checking logs.
+]]
 
+-- Requires and Services
 local TweenService = game:GetService("TweenService")
 local PlayerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 
--- Ensure these names match your UI hierarchy
-local screenGui = PlayerGui:WaitForChild("MessageGui")
-local container = screenGui:WaitForChild("Container")
+-- References
+local messageGui = PlayerGui:WaitForChild("MessageGui")
+local frame = messageGui:WaitForChild("Container")
+local labelPrefab: TextLabel = messageGui:WaitForChild("FeedbackMessagePrefab")
+
+-- Constants
+local duration = 2 -- seconds
+local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+-- ----------------------------- ----------- MODULE DEFINITION ----------- -----------------------------
+
+local MessageService = {}
 
 function MessageService.SendMessage(text)
-	-- Create the Label
-	local label = Instance.new("TextLabel")
-	label.Name = "FeedbackMessage"
-	label.Size = UDim2.new(1, 0, 0, 30)
-	label.BackgroundTransparency = 1
-	label.Text = text
-	label.TextColor3 = Color3.fromRGB(218, 13, 6)
-	label.TextSize = 24
-	label.Font = Enum.Font.BuilderSansBold -- Modern Roblox font
-	label.Parent = container
-
-	-- Setup Tween
-	local tweenInfo = TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-	local fade = TweenService:Create(label, tweenInfo, {TextTransparency = 1})
-
-	-- Lifecycle: Show for 1 second, then fade for 1 second, then destroy
-	task.delay(1, function()
-		fade:Play()
-		fade.Completed:Connect(function()
-			label:Destroy()
-		end)
-	end)
+	local label = labelPrefab:Clone()
+	label.Text  = text
+	label.Parent = frame
+	
+	local fadeIn  = TweenService:Create(label, tweenInfo, { TextTransparency = 0 })
+	local fadeOut = TweenService:Create(label, tweenInfo, { TextTransparency = 1 })
+	fadeIn.Completed:Connect(function() task.wait(duration); fadeOut:Play() end)
+	fadeOut.Completed:Connect(function() label:Destroy() end)
+	
+	fadeIn:Play()
 end
+
+-- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
 
 return MessageService

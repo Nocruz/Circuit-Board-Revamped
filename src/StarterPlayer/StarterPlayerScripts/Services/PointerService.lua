@@ -1,195 +1,171 @@
---!strict
 --[[ POINTER SERVICE
-		Handles hover, click, and pointer movement.
-		Also exposes events for when the pointer enters or leaves a gate or node.
-		
-		Should be working for mobile. I will make a console cursor later.
+		Handles all pointer related operations.
+		Only supports Mouse for now.
 ]]
 
 -- Requires and Services
-local Players          = game:GetService("Players")
-local RunService       = game:GetService("RunService")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local PhysicsService = game:GetService("PhysicsService")
 local UserInputService = game:GetService("UserInputService")
-local Workspace		     = game:GetService("Workspace")
 
--- References
-local player = Players.LocalPlayer :: Player
-local camera = Workspace.CurrentCamera :: Camera
+-- ----------------------------- --------- RAYCAST CONFIGURATION --------- -----------------------------
+-- Raycast collision groups
+local GROUP_IGNORES = "PointerServiceRaycastIgnore"
+local GROUP_RAYCAST = "PointerServiceRaycast"
 
--- Filter
-local raycastFilter = Instance.new("Folder")
-raycastFilter.Name = "RaycastFilter"
-raycastFilter.Parent = Workspace
-
--- Raycast
-local rayParams = RaycastParams.new()
-rayParams.FilterType = Enum.RaycastFilterType.Exclude
-rayParams.FilterDescendantsInstances = { raycastFilter, Workspace:WaitForChild("Characters") }
+if not PhysicsService:IsCollisionGroupRegistered(GROUP_IGNORES) or not PhysicsService:IsCollisionGroupRegistered(GROUP_RAYCAST) then
+	error("PointerService requires the PhysicsCollisionGroups \"" .. GROUP_IGNORES .. "\" and \"" .. GROUP_RAYCAST .. "\".")
+end
 
 local MAX_RAY_DISTANCE = 1000
 
--- Events
-local hoverChanged = Instance.new("BindableEvent")
-local gateHovered  = Instance.new("BindableEvent")
-local nodeHovered  = Instance.new("BindableEvent")
-local interacted   = Instance.new("BindableEvent")
+local rayParams = RaycastParams.new()
+rayParams.CollisionGroup = GROUP_RAYCAST
+rayParams.IgnoreWater = true
 
--- State
-local running  = false
-local renderConnection: RBXScriptConnection? = nil
+local function ignoreInstance(instance: Instance)
+	local function ignore(i: Instance) if i:IsA("BasePart") then i.CollisionGroup = GROUP_IGNORES end end
+	ignore(instance)
+	for _, descendant in ipairs(instance:GetDescendants()) do
+		ignore(descendant)
+	end
+	
+	instance.DescendantAdded:Connect(function(descendant)
+		ignore(descendant)
+	end)
+end
 
-local lastPointerPos: Vector3? = nil
-local currentResult: RaycastResult? = nil
+-- Ignore characters
+Players.PlayerAdded:Connect(function(player)
+	player.CharacterAdded:Connect(ignoreInstance)
+	if player.Character then
+		ignoreInstance(player.Character)
+	end
+end)
 
--- Debugging
-local logger = require(game:GetService("ReplicatedStorage").LoggerService)
-local log = logger.new("PointerService")
+for _, player in Players:GetPlayers() do
+	player.CharacterAdded:Connect(ignoreInstance)
+	if player.Character then
+		ignoreInstance(player.Character)
+	end
+end
 
-local DEBUG_BALL = false -- toggle debug visualization
+-- Ignore Safezones too
+local safezonesFolder = Workspace:WaitForChild("Safezones")
+assert(safezonesFolder ~= nil, "No safezones! Forgot to update this script?")
+for _, safezone in ipairs(safezonesFolder:GetChildren()) do
+	ignoreInstance(safezone)
+end
+safezonesFolder.DescendantAdded:Connect(function(descendant) ignoreInstance(descendant) end)
 
-local debugBall: Part?
-if DEBUG_BALL then
+-- ----------------------------- ------------ DEBUGGING UTILS ------------ -----------------------------
+
+local DEBUG_ATTRIBUTE = "Debug"
+local IS_DEBUG_ACTIVE = script:GetAttribute(DEBUG_ATTRIBUTE) or false
+local debugBall: Part = Instance.new("Part") do
 	debugBall = Instance.new("Part")
 	debugBall.Shape = Enum.PartType.Ball
-	debugBall.Size = Vector3.new(0.3, 0.3, 0.3) -- adjust size
+	debugBall.Size = Vector3.new(0.3, 0.3, 0.3)
 	debugBall.Anchored = true
 	debugBall.CanCollide = false
 	debugBall.Material = Enum.Material.Neon
-	debugBall.Color = Color3.fromRGB(0, 255, 0) -- bright green
+	debugBall.Color = Color3.fromRGB(0, 255, 0)
 	debugBall.Transparency = 0.5
-	debugBall.Parent = raycastFilter
-
+	debugBall.Parent = if IS_DEBUG_ACTIVE then Workspace else nil
+	
 	-- Ignore raycasts for the ball
-	table.insert(rayParams.FilterDescendantsInstances, debugBall)
+	ignoreInstance(debugBall)
 end
 
--- ----------------------------- ------- RECORD DEFINITION -------- ---------------------------
+script:GetAttributeChangedSignal(DEBUG_ATTRIBUTE):Connect(function()
+	IS_DEBUG_ACTIVE = script:GetAttribute(DEBUG_ATTRIBUTE)
+	debugBall.Parent = if IS_DEBUG_ACTIVE then Workspace else nil
+end)
+
+-- ----------------------------- ----------- HELPER FUNCTIONS ------------ -----------------------------
+
+local function isGate(instance: Instance?): boolean
+	return
+		instance ~= nil and
+		instance:GetAttribute("GateID") ~= nil
+end
+
+local function isNode(instance: Instance?): boolean
+	return
+		instance ~= nil and
+		instance:IsA("BasePart") and -- Assumes BasePart to access Position in closestNodeToPointerOfPointedGate
+		instance:GetAttribute("NodeType") ~= nil
+end
+
+local function gateFromDescendant(descendant: Instance?): Instance?
+	if descendant == nil then return nil end
+	
+	local instance = descendant:FindFirstAncestorWhichIsA("Model")
+	return (isGate(instance) and instance) or nil
+end
+
+local function closestNodeToPointerOfPointedGate(gate: Instance?, hitPos: Vector3?): Instance?
+	if not gate or not isGate(gate) or not hitPos then return end
+	
+	local nodes = gate:FindFirstChild("Nodes")
+	if nodes == nil then
+		error("Pointed gate doesn't have the 'Gate' structure (Gate -> Nodes: Folder -> { Inputs: Folder, Outputs: Folder })")
+		return nil
+	end
+	local inputs = nodes:FindFirstChild("Inputs")
+	local outputs = nodes:FindFirstChild("Outputs")
+	if inputs == nil or outputs == nil then
+		error("Pointed gate doesn't have the 'Gate' structure (Gate -> Nodes: Folder -> { Inputs: Folder, Outputs: Folder })")
+		return nil
+	end
+	
+	local closest: Instance? = nil
+	local maxDistance = math.huge
+	for _, folder in { inputs, outputs } do
+		for _, node: BasePart in folder:GetChildren() do
+			if not isNode(node) then continue end
+			
+			local distance = (hitPos - node.Position).Magnitude
+			if distance < maxDistance then
+				closest, maxDistance = node, distance
+			end
+		end
+	end
+	
+	return closest
+end
+
+-- ----------------------------- ----------- MODULE DEFINITION ----------- -----------------------------
+
+-- Events
+local hoverChanged = Instance.new("BindableEvent")
+local gateHovered = Instance.new("BindableEvent")
+local nodeHovered = Instance.new("BindableEvent")
+local interacted = Instance.new("BindableEvent")
 
 local PointerService = {
-	RaycastFilter = raycastFilter,
+	AddToFilter = ignoreInstance,
 	
+	-- READ-ONLY
 	HoveredInstance = nil :: Instance?,
 	HoveredGate = nil :: Model?,
 	HoveredNode = nil :: BasePart?,
 	HitPosition = nil :: Vector3?,
 	
 	OnHoverChanged = hoverChanged.Event,
-	OnGateHovered  = gateHovered.Event,
-	OnNodeHovered  = nodeHovered.Event,
-	OnInteraction  = interacted.Event,
+	OnGateHovered = gateHovered.Event,
+	OnNodeHovered = nodeHovered.Event,
+	OnInteraction = interacted.Event,
 }
 
--- ----------------------------- -------- HELPER METHODS --------- ---------------------------
-
-local function isGate(model: Model?): boolean
-	-- Check gate models (assume node structure: Model -> BaseGate & (Nodes -> Input1 & Input2 & ... & InputN) & Decoration -> Main)
-	if not model then return false end
-	return model:FindFirstChild("Decoration") ~= nil
-		and model:FindFirstChild("Base") ~= nil
-		and model:FindFirstChild("Nodes") ~= nil
-end
-
-local function findGateFromInstance(instance: Instance?): Model?
-	if not instance then return nil end
-	
-	local model = instance:FindFirstAncestorWhichIsA("Model")
-	return if isGate(model) then model else nil
-end
-
-local function findClosestNodeFromGate(gate: Model?, hitPos: Vector3?): BasePart?
-	if not gate or not isGate(gate) or not hitPos then return nil end
-	
-	local nodes = gate:FindFirstChild("Nodes")
-	if not nodes then return nil end
-	
-	local closest, dist = nil, math.huge
-	for _, node in nodes:GetChildren() do
-		if not node:IsA("BasePart") then continue end
-		if not node:GetAttribute("Type") then continue end
-
-		local d = (hitPos - node.Position).Magnitude
-		if d < dist then
-			closest, dist = node, d
-		end
-	end
-
-	return closest
-end
-
--- ----------------------------- -------- UPDATE RAYCAST --------- ------------------------------
-
-local function updateRaycast()
-	if not lastPointerPos or not running then return end
-	
-	local ray = camera:ScreenPointToRay(lastPointerPos.X, lastPointerPos.Y)
-	currentResult = Workspace:Raycast(ray.Origin, ray.Direction * MAX_RAY_DISTANCE, rayParams)
-	
-	local instance = (currentResult and currentResult.Instance) or nil
-	local hitPos = (currentResult and currentResult.Position) or nil
-	
-	PointerService.HitPosition = hitPos
-	
-	-- Move debug ball to hit position
-	if DEBUG_BALL and debugBall then
-		if currentResult and currentResult.Position then
-			debugBall.Position = currentResult.Position
-			debugBall.Transparency = 0.5
-		else
-			-- Hide it when nothing is hit
-			debugBall.Transparency = 1
-		end
-	end
-
-	-- If part changed
-	if instance ~= PointerService.HoveredInstance then
-		log.info("Pointing to " .. tostring(PointerService.HitPosition or "nothing"))
-		PointerService.HoveredInstance = instance
-		
-		local gate = findGateFromInstance(instance)
-		local node = findClosestNodeFromGate(gate, hitPos)
-		
-		if gate ~= PointerService.HoveredGate then
-			PointerService.HoveredGate = gate
-			log.info("Changed hovered gate to: " .. (gate and gate.Name or "nil"))
-			if gate then gateHovered:Fire(gate) end
-		end
-		
-		if node ~= PointerService.HoveredNode then
-			PointerService.HoveredNode = node
-			log.info("Changed hovered node to: " .. (node and node.Name or "nil"))
-			if node then nodeHovered:Fire(node) end
-		end
-		
-		hoverChanged:Fire(instance, gate, node)
-		return
-	end
-	
-	-- If position changed, check for closest node change
-	if PointerService.HoveredGate then
-		local node = findClosestNodeFromGate(PointerService.HoveredGate, hitPos)
-		if node ~= PointerService.HoveredNode then
-			PointerService.HoveredNode = node
-			log.info("Changed hovered node to: " .. (node and node.Name or "nil"))
-			if node then nodeHovered:Fire(node) end
-		end
-	end
-	
-end
-	
--- ----------------------------- -------- INPUT HANDLING --------- ---------------------------
-
-UserInputService.InputChanged:Connect(function(input) 
-	if input.UserInputType == Enum.UserInputType.MouseMovement then
-		lastPointerPos = input.Position
-	elseif input.UserInputType == Enum.UserInputType.Touch then
-		lastPointerPos = input.Position
-	end
-end)
+-- ----------------------------- ------------ INPUT DETECTION ----------- -----------------------------
 
 UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then return end
 	
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		interacted:Fire(
 			PointerService.HoveredInstance,
 			PointerService.HoveredGate,
@@ -198,27 +174,62 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	end
 end)
 
--- ----------------------------- ---------- LIFECYCLE  ----------- -------------------------------
-
-function PointerService.Start()
-	if running then return end
-	running = true
+RunService.RenderStepped:Connect(function()
+	local camera = Workspace.CurrentCamera
+	if not camera then return end
 	
-	renderConnection = RunService.RenderStepped:Connect(updateRaycast)
-end
-
-function PointerService.Stop()
-	if not running then return end
-	running = false
+	local ray = camera:ViewportPointToRay(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y)
+	local currentResult = Workspace:Raycast(ray.Origin, ray.Direction * MAX_RAY_DISTANCE, rayParams)
 	
-	if renderConnection then
-		renderConnection:Disconnect()
-		renderConnection = nil
+	local instance = (currentResult and currentResult.Instance) or nil
+	local position = (currentResult and currentResult.Position) or nil
+	PointerService.HitPosition = position
+	
+	-- Traslate the debug ball to cursor
+	if IS_DEBUG_ACTIVE then
+		if position then
+			debugBall.Position = currentResult.Position
+			debugBall.Transparency = 0.5
+		else
+			debugBall.Transparency = 1
+		end
 	end
-end
+	
+	-- If hovered part changed
+	if instance ~= PointerService.HoveredInstance then
+		if IS_DEBUG_ACTIVE then print("Pointing to " .. tostring(PointerService.HitPosition or "nothing")) end
+		PointerService.HoveredInstance = instance
+		
+		local gate = gateFromDescendant(instance)
+		local node = closestNodeToPointerOfPointedGate(gate, position)
+		
+		if gate ~= PointerService.HoveredGate then
+			PointerService.HoveredGate = gate
+			if IS_DEBUG_ACTIVE then print("Changed hovered gate to: " .. ((gate and gate.Name) or "nil")) end
+			if gate then gateHovered:Fire(gate) end
+		end
+		
+		if node ~= PointerService.HoveredNode then
+			PointerService.HoveredNode = node
+			if IS_DEBUG_ACTIVE then print("Changed hovered node to: " .. ((node and node.Name) or "nil")) end
+			if node then nodeHovered:Fire(node) end
+		end
+		
+		hoverChanged:Fire(instance, gate, node)
+		return
+	end
 
-PointerService.Start()
+	-- If position changed, but on the same part, update the closest node
+	if PointerService.HoveredGate then
+		local node = closestNodeToPointerOfPointedGate(PointerService.HoveredGate, position)
+		if node ~= PointerService.HoveredNode then
+			PointerService.HoveredNode = node
+			if IS_DEBUG_ACTIVE then print("Changed hovered node to: " .. ((node and node.Name) or "nil")) end
+			if node then nodeHovered:Fire(node) end
+		end
+	end
+end)
 
--- ----------------------------- --------- END OF MODULE ---------- -------------------------------
+-- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
 
 return PointerService
