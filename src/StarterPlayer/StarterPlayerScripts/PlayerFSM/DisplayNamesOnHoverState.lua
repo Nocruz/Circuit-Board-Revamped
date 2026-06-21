@@ -25,7 +25,7 @@ function State:hideUI()
 	self.UI.Adornee = nil
 end
 
-function State:updateUI(instance: Instance?, gate: Instance?, node: Instance?)
+function State:updateUI(gate: Instance?)
 	if not gate then
 		self:hideUI()
 		return
@@ -58,10 +58,10 @@ function State:Enter()
 	
 	self:hideUI()
 	
-	self.HoverConnection = PointerService.OnHoverChanged:Connect(function(instance: Instance?, gate: Instance?, node: Instance?)
-		self:updateUI(instance, gate, node)
+	self.HoverConnection = PointerService.OnHoverChanged:Connect(function(_, gate: Instance?, _)
+		self:updateUI(gate)
 	end)
-	self:updateUI()
+	self:updateUI(PointerService.HoveredGate)
 end
 
 function State:Activated()

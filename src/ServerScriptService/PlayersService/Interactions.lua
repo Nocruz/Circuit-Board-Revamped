@@ -8,6 +8,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
+local Safezones = require(script.Parent.Safezones)
 local Permissions = require(script.Parent.Permissions)
 local GatesHandler = require(ServerScriptService.GateService.Handlers.GatesHandler)
 local GridService = require(ReplicatedStorage.GridService)
@@ -46,10 +47,9 @@ local ParameterSolver: { [TParameter]: (... any) -> (boolean, string | any) } = 
 		if not cframe or typeof(cframe) ~= "CFrame" then
 			return false, "Invalid parameters! CFrame was not a CFrame"
 		end
-		if cframe.Position.X ~= cframe.Position.X or cframe.Position.Y ~= cframe.Position.Y or cframe.Position.Z ~= cframe.Position.Z then
-			return false, "Invalid position! NaN error. Check with a mod"
+		if Safezones.IsGateInSafezone(cframe.Position, Vector3.new(2, 1, 2)) then
+			return false, "Invalid position! Too close to a safezone"
 		end
-		-- TODO: Check for safezones
 		return true, GridService.fromCFrame(cframe)._cframe
 	end
 }
