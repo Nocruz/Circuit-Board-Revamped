@@ -10,7 +10,7 @@
 			These values are the AllowedValues.
 ]]
 
--- ----------------------------- ---------- TYPE DEFINITIONS ----------- ---------------------------
+-- ----------------------------- ------------ TYPE DEFINITIONS ----------- -----------------------------
 
 type Predicate<T> = (T) -> boolean
 
@@ -20,7 +20,7 @@ export type TAttributeData<T> = {
 	AllowedValues: { T }?,
 }
 
--- ----------------------------- ------------- PUBLIC API ------------- ---------------------------
+-- ----------------------------- --------------- PUBLIC API -------------- -----------------------------
 
 local Attributes = {}
 
@@ -44,6 +44,6 @@ function Attributes.Get(attribute: string | number | boolean, specification: TAt
 	return if Attributes.IsValid(attribute, specification) then attribute else specification.Default
 end
 
--- ----------------------------- ----------- END OF MODULE ------------ ---------------------------
+-- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
 
 return Attributes

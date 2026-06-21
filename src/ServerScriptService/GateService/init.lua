@@ -1,4 +1,4 @@
---[[ GATE CONTROLLER
+--[[ GATE SERVICE
 		Public API to interact with the whole system.
 		Handles coordination between submodules.
 		Works as a plug-and-play for the game.
