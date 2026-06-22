@@ -45,6 +45,7 @@ Players.PlayerRemoving:Connect(function(player: Player, reason: Enum.PlayerExitR
 	destroyAllGatesTimeouts[player.UserId] = task.delay(TIME_TO_DESTROY_GATES_AFTER_LEAVING, function()
 		local playerFolder = gatesFolder:FindFirstChild(tostring(player.UserId))
 		if playerFolder then
+			-- TODO: Implement gate destruction
 			warn("Leave timer has ran out for player " .. player.UserId .. ", but I have not implemented all gate destruction!")
 		end
 		
@@ -72,5 +73,15 @@ Interactions.CreateEvent("Spawn", { "GateID", "CFrame" }, function(player: Playe
 	end		
 	
 	GateService.Instantiate(player.UserId, gate.Specification.Name, cframe, gate.Visuals, gate.Attributes)
+	return true
+end)
+
+-- Gate mover
+Interactions.CreateEvent("Move", { "GateID", "CFrame" }, function(player: Player, gate, cframe: CFrame)
+	if not Permissions.CanPlayerDo(player.UserId, gate.OwnerID, "Move") then
+		return false, "Lacks permissions to move this gate"
+	end		
+	
+	GateService.Move(gate.ID, cframe)
 	return true
 end)

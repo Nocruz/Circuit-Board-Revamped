@@ -69,6 +69,17 @@ function GateService.Instantiate(ownerID: number, specificationName: string, cfr
 	return nextID - 1	
 end
 
+function GateService.Move(gateID: number, cframe: CFrame)
+	local gate = GatesHandler.Get(gateID)
+	if not gate then
+		warn("Tried to move gate of ID " .. gateID .. ", but it doesn't exist")
+		return
+	end
+	
+	gate.Model:PivotTo(cframe)
+	-- Move all connections
+end
+
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
 
 return GateService
