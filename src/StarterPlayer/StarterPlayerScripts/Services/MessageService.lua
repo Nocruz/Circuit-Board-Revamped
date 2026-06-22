@@ -21,7 +21,7 @@ local MessageService = {}
 
 function MessageService.SendMessage(text)
 	local label = labelPrefab:Clone()
-	label.Text  = text
+	label.Text = text
 	label.Parent = frame
 	
 	local fadeIn  = TweenService:Create(label, tweenInfo, { TextTransparency = 0 })

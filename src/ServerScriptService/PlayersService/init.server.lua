@@ -60,7 +60,8 @@ end)
 -- Permission request
 Interactions.CreateQuery("Permission", { "GateID", "Action" }, function(player: Player, gate, action: Permissions.ActionType)
 	if not Permissions.CanPlayerDo(player.UserId, gate.OwnerID, action, gate.Specification.Name) then
-		return false, "Player " .. tostring(player.UserId) .. " lacks permissions to " .. action .. " a gate owned by " .. gate.OwnerId
+		print("Player " .. tostring(player.UserId) .. " lacks permissions to " .. action .. " a gate owned by " .. gate.OwnerID .. " of type " .. gate.Specification.Name)
+		return false, "Lacks permissions to do this!"
 	end
 	
 	return true		
