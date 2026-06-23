@@ -40,16 +40,16 @@ local function DeactivationContext(): "Skybox" | "Invalid" | "Valid"
 end
 
 function State:showUIs()
-	self.BaseHighlight.Adornee = self.Ghost:FindFirstChild("Base") or error("Gate had no 'Base' children")
+	self.BaseHighlight.Adornee = self.Gate:FindFirstChild("Base") or error("Gate had no 'Base' children")
 	self.BaseHighlight.Visible = true
-	self.BaseHighlight.Parent = self.Ghost
+	self.BaseHighlight.Parent = self.Gate
 	
 	self.GridTexture.Parent = Workspace:FindFirstChild("Terrain"):FindFirstChild("Baseplate") or error("Workspace.Terrain.Baseplate does not exist")
 	
-	self.NameGui.Adornee = self.Ghost
+	self.NameGui.Adornee = self.Gate
 	self.NameGui.Enabled = true
-	self.NameGui.TextLabel.Text = self.Ghost.Name
-	self.NameGui.Parent = self.Ghost
+	self.NameGui.TextLabel.Text = self.Gate.Name
+	self.NameGui.Parent = self.Gate
 end
 
 function State:hideUIs()
@@ -68,7 +68,7 @@ end
 function State:MoveGhostToPointer()
 	local position = PointerService.HitPosition
 	if not position then
-		self.Ghost:PivotTo(CFrame.new(0, -100, 0))
+		self.Gate:PivotTo(CFrame.new(0, -100, 0))
 		return
 	end
 	
@@ -76,7 +76,7 @@ function State:MoveGhostToPointer()
 	if PointerService.HoveredGate then
 		cframe = GridService.Move(cframe, cframe.Position + GridService.getSurfaceNormal(PointerService.HitPosition, GridService.fromCFrame(PointerService.HoveredGate:GetPivot())))
 	end
-	self.Ghost:PivotTo(cframe._cframe)
+	self.Gate:PivotTo(cframe._cframe)
 end
 
 function State:CleanUpGhost()
@@ -92,17 +92,12 @@ function State:CleanUpGhost()
 		self.RotationConnection = nil
 	end
 	
-	if self.Ghost then
-		self.Ghost:Destroy()
-		self.Ghost = nil
-	end
-	
 	if self.Gate then
-		self.Gate.Parent = self.GatePreviousParent
+		PointerService.RemoveFromFilter(self.Gate)
 		self.Gate = nil
 	end
 	
-	self.GatePreviousParent = nil
+	self.GatePreviousCFrame = nil
 	self.Rotation = 0
 	self.Active = false
 end
@@ -119,8 +114,7 @@ function State.new(player: Player, character: Model)
 	self.NameGui = nil
 	
 	self.Gate = nil
-	self.GatePreviousParent = nil
-	self.Ghost = nil
+	self.GatePreviousCFrame = nil
 	
 	self.RenderConnection = nil
 	self.RotationConnection = nil
@@ -142,33 +136,32 @@ function State:Activated()
 	if self.Active then -- We are placing the gate
 		local context = DeactivationContext()
 		if context == "Valid" then
-			local success, message = moveEvent:InvokeServer(self.Gate:GetAttribute("GateID"), self.Ghost:GetPivot())
+			local success, message = moveEvent:InvokeServer(self.Gate:GetAttribute("GateID"), self.Gate:GetPivot())
 			if not success then
 				MessageService.SendMessage(message)
 			end
 		else
-			print("Canceled spawn!")
+			self.Gate:PivotTo(self.GatePreviousCFrame)
+			print("Canceled move!")
 		end
 		
 		self:CleanUpGhost()
 	else -- We are copying the gate
-		self.Gate = PointerService.HoveredGate
-		if self.Gate == nil then return end
+		local gate = PointerService.HoveredGate
+		if gate == nil then return end
 		
-		local success, message = permissionQuery:InvokeServer(self.Gate:GetAttribute("GateID"), "Spawn")
+		local success, message = permissionQuery:InvokeServer(gate:GetAttribute("GateID"), "Move")
 		if not success then
 			MessageService.SendMessage(message)
 			return
 		end
 		
-		self.GatePreviousParent = self.Gate.Parent
-		self.Gate.Parent = nil
-		self.Ghost = self.Gate:Clone()
-		self.Ghost.Parent = Workspace
-		PointerService.AddToFilter(self.Ghost)
+		self.Gate = gate
+		self.GatePreviousCFrame = self.Gate:GetPivot()
+		PointerService.AddToFilter(self.Gate)
 		
 		-- Rotate the preview model
-		local _, radians = GridService.fromCFrame(self.Ghost:GetPivot())._cframe:ToOrientation()
+		local _, radians = GridService.fromCFrame(self.Gate:GetPivot())._cframe:ToOrientation()
 		self.Rotation = math.deg(radians)
 		
 		self:showUIs()
@@ -192,6 +185,9 @@ function State:Deactivated()
 end
 
 function State:Exit()
+	if self.Active then
+		self.Gate:PivotTo(self.GatePreviousCFrame)
+	end
 	self:CleanUpGhost()
 	
 	self.BaseHighlight:Destroy()

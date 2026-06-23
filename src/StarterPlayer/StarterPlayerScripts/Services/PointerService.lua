@@ -37,6 +37,18 @@ local function ignoreInstance(instance: Instance)
 	end)
 end
 
+local function restoreInstance(instance: Instance)
+	local function restore(i: Instance) if i:IsA("BasePart") then i.CollisionGroup = "Default" end end
+	restore(instance)
+	for _, descendant in ipairs(instance:GetDescendants()) do
+		restore(descendant)
+	end
+	
+	instance.DescendantAdded:Connect(function(descendant)
+		restore(descendant)
+	end)
+end
+
 -- Ignore characters
 Players.PlayerAdded:Connect(function(player)
 	player.CharacterAdded:Connect(ignoreInstance)
@@ -55,9 +67,7 @@ end
 -- Ignore Safezones too
 local safezonesFolder = Workspace:WaitForChild("Safezones")
 assert(safezonesFolder ~= nil, "No safezones! Forgot to update this script?")
-for _, safezone in ipairs(safezonesFolder:GetChildren()) do
-	ignoreInstance(safezone)
-end
+ignoreInstance(safezonesFolder)
 safezonesFolder.DescendantAdded:Connect(function(descendant) ignoreInstance(descendant) end)
 
 -- ----------------------------- ------------ DEBUGGING UTILS ------------ -----------------------------
@@ -147,6 +157,7 @@ local interacted = Instance.new("BindableEvent")
 
 local PointerService = {
 	AddToFilter = ignoreInstance,
+	RemoveFromFilter = restoreInstance,
 	
 	-- READ-ONLY
 	HoveredInstance = nil :: Instance?,

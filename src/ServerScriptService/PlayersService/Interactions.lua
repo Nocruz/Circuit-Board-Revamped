@@ -19,7 +19,7 @@ local queriesFolder = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Que
 
 -- ----------------------------- --------- PARAMETER RESOLUTION ---------- -----------------------------
 
-export type TParameter = "GateID" | "Action" | "CFrame"
+export type TParameter = "GateID" | "Action" | "CFrame" | "string"
 
 local ParameterSolver: { [TParameter]: (... any) -> (boolean, string | any) } = {
 	["GateID"] = function(gateID: number)
@@ -51,6 +51,13 @@ local ParameterSolver: { [TParameter]: (... any) -> (boolean, string | any) } = 
 			return false, "Invalid position! Too close to a safezone"
 		end
 		return true, GridService.fromCFrame(cframe)._cframe
+	end,
+	
+	["string"] = function(string: string)
+		if not string or type(string) ~= "string" then
+			return false, "Invalid parameters! String was not a string"
+		end
+		return true, string
 	end
 }
 

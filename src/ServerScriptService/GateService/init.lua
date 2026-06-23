@@ -9,6 +9,7 @@ local GatesHandler = require(script.Handlers.GatesHandler)
 local SpecificationsHandler = require(script.Handlers.SpecificationsHandler)
 
 local Models = require(script.Models)
+local Connections = require(script.Connections)
 
 -- ----------------------------- ----------- MODULE DEFINITION ----------- -----------------------------
 
@@ -71,13 +72,47 @@ end
 
 function GateService.Move(gateID: number, cframe: CFrame)
 	local gate = GatesHandler.Get(gateID)
-	if not gate then
+	if gate == nil then
 		warn("Tried to move gate of ID " .. gateID .. ", but it doesn't exist")
 		return
 	end
 	
 	gate.Model:PivotTo(cframe)
 	-- Move all connections
+end
+
+function GateService.Connect(fromGateID: number, toGateID: number, fromNode: string, toNode: string): (boolean, string?)
+	local fromGate, toGate = GatesHandler.Get(fromGateID), GatesHandler.Get(toGateID)
+	
+	-- Existance validation
+	if fromGate == nil then
+		warn("Tried to connect gate of ID " .. fromGateID ..", but it doesn't exist")
+		return false
+	end
+	if toGate == nil then
+		warn("Tried to connect gate of ID " .. toGateID ..", but it doesn't exist")
+		return false
+	end
+	if table.find(fromGate.Specification.Nodes.Outputs, fromNode) == nil then
+		warn("Tried to connect node \"" .. fromNode .. "\" of a gate of specification \"" .. fromGate.Specification.Name .. "\" (" .. fromGateID .. "), despite it not having any Output Node with that name.")
+		return false
+	end
+	if table.find(toGate.Specification.Nodes.Inputs, toNode) == nil then
+		warn("Tried to connect node \"" .. toNode .. "\" of a gate of specification \"" .. toGate.Specification.Name .. "\" (" .. toGateID .. "), despite it not having any Input Node with that name.")
+		return false
+	end
+
+	-- Are they already connected?
+	if Connections.Get(fromGateID, toGateID, fromNode, toNode) ~= nil then
+		return false, "These nodes are already connected"
+	end
+	
+	Connections.new(fromGateID, toGateID, fromGate.Model.Nodes.Outputs[fromNode], toGate.Model.Nodes.Inputs[toNode])
+	
+	Connections.Debug(fromGateID)
+	Connections.Debug(toGateID)
+	
+	return true
 end
 
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------

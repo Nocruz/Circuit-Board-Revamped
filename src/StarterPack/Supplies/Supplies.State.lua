@@ -147,15 +147,16 @@ function State:Activated()
 		
 		self:CleanUpGhost()
 	else -- We are copying the gate
-		self.Gate = PointerService.HoveredGate
-		if self.Gate == nil then return end
+		local gate = PointerService.HoveredGate
+		if gate == nil then return end
 		
-		local success, message = permissionQuery:InvokeServer(self.Gate:GetAttribute("GateID"), "Spawn")
+		local success, message = permissionQuery:InvokeServer(gate:GetAttribute("GateID"), "Spawn")
 		if not success then
 			MessageService.SendMessage(message)
 			return
 		end
 		
+		self.Gate = gate
 		self.Ghost = self.Gate:Clone()
 		self.Ghost.Parent = Workspace
 		PointerService.AddToFilter(self.Ghost)

@@ -60,7 +60,6 @@ end)
 -- Permission request
 Interactions.CreateQuery("Permission", { "GateID", "Action" }, function(player: Player, gate, action: Permissions.ActionType)
 	if not Permissions.CanPlayerDo(player.UserId, gate.OwnerID, action, gate.Specification.Name) then
-		print("Player " .. tostring(player.UserId) .. " lacks permissions to " .. action .. " a gate owned by " .. gate.OwnerID .. " of type " .. gate.Specification.Name)
 		return false, "Lacks permissions to do this!"
 	end
 	
@@ -85,4 +84,17 @@ Interactions.CreateEvent("Move", { "GateID", "CFrame" }, function(player: Player
 	
 	GateService.Move(gate.ID, cframe)
 	return true
+end)
+
+-- Gate connector
+Interactions.CreateEvent("Connect", { "GateID", "GateID", "string", "string" }, function(player: Player, fromGate, toGate, fromNode: string, toNode: string)
+	if not Permissions.CanPlayerDo(player.UserId, fromGate.OwnerID, "Wire") then
+		return false, "Lacks permissions to wire from this gate"
+	end
+	
+	if not Permissions.CanPlayerDo(player.UserId, toGate.OwnerID, "Wire") then
+		return false, "Lacks permissions to wire to this gate"
+	end
+	
+	return GateService.Connect(fromGate.ID, toGate.ID, fromNode, toNode)
 end)

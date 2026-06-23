@@ -21,8 +21,8 @@ local pointerBallPrefab = ReplicatedStorage:WaitForChild("Client"):WaitForChild(
 local wirePrefab = ReplicatedStorage:WaitForChild("Wire")
 
 -- Events
-local permissionQuery: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Queries"):WaitForChild("Permission")
-local wireEvent: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("Wire")
+local permissionQuery: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Queries"):WaitForChild("Permission", 1)
+local connectEvent: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("Connect", 1)
 
 -- State definition
 local State = {}
@@ -139,12 +139,17 @@ function State:Activated()
 			return
 		end
 		
-		if startType == "Output" then
-			self.StartGate, gate = gate, self.StartGate
-			self.StartNode, node = node, self.StartNode
+		local fromGate, toGate = nil, nil
+		local fromNode, toNode = nil, nil
+		if startType == "Input" then
+			fromGate, toGate = gate, self.StartGate
+			fromNode, toNode = node.Name, self.StartNode.Name
+		else
+			fromGate, toGate = self.StartGate, gate
+			fromNode, toNode = self.StartNode.Name, node.Name
 		end
 		
-		local success, message = wireEvent:InvokeServer(self.StartGate:GetAttribute("GateID"), gate:GetAttribute("GateID"), self.StartNode.Name, node.Name)
+		local success, message = connectEvent:InvokeServer(fromGate:GetAttribute("GateID"), toGate:GetAttribute("GateID"), fromNode, toNode)
 		if not success then
 			MessageService.SendMessage(message)
 			return
