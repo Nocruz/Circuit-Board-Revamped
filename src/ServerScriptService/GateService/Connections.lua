@@ -12,7 +12,7 @@ local wiresFolder = Workspace:FindFirstChild("Wires")
 if not (wiresFolder and wiresFolder:IsA("Folder")) then
 	wiresFolder = Instance.new("Folder")
 	wiresFolder.Name = "Wires"
-	wiresFolder.Parent = workspace
+	wiresFolder.Parent = Workspace
 end
 
 local wirePrefab = ReplicatedStorage.Wire
@@ -29,8 +29,9 @@ local incoming = {}
 
 -- ----------------------------- ---------------- HELPERS ---------------- -----------------------------
 
-local function updateHitbox(fromID, toID, fromNode, toNode)
-	local wire = Connections.Get(fromID, toID, fromNode, toNode) :: Beam & { Hitbox: BasePart } 
+local function updateHitbox(wire: Beam & { Hitbox: BasePart })
+	if wire == nil or wire.Attachment0 == nil or wire.Attachment1 == nil then return end
+	
 	local fromPosition = wire.Attachment0.WorldPosition
 	local toPosition = wire.Attachment1.WorldPosition
 	local length = (toPosition - fromPosition).Magnitude
@@ -67,15 +68,44 @@ function Connections.new(fromID: number, toID: number, fromNode: BasePart, toNod
 	incoming[toID][toNode.Name][fromID] = incoming[toID][toNode.Name][fromID] or {}
 	incoming[toID][toNode.Name][fromID][fromNode.Name] = wire
 	
-	updateHitbox(fromID, toID, fromNode.Name, toNode.Name)
+	updateHitbox(wire)
 	return wire
+end
+
+function Connections.Destroy(fromID, toID, fromNode, toNode)
+	local wire = Connections.Get(fromID, toID, fromNode, toNode)
+	if not wire then return end
+	
+	wire:Destroy()
+	
+	outgoing[fromID][fromNode][toID][toNode] = nil
+	if next(outgoing[fromID][fromNode][toID]) == nil then
+		outgoing[fromID][fromNode][toID] = nil
+		if next(outgoing[fromID][fromNode]) == nil then
+			outgoing[fromID][fromNode] = nil
+			if next(outgoing[fromID]) == nil then
+				outgoing[fromID] = nil
+			end
+		end
+	end
+	
+	incoming[toID][toNode][fromID][fromNode] = nil
+	if next(incoming[toID][toNode][fromID]) == nil then
+		incoming[toID][toNode][fromID] = nil
+		if next(incoming[toID][toNode]) == nil then
+			incoming[toID][toNode] = nil
+			if next(incoming[toID]) == nil then
+				incoming[toID] = nil
+			end
+		end
+	end
 end
 
 function Connections.UpdateAllWireHitboxes(gateID)
 	for toNode, layer1 in pairs(incoming[gateID] or {}) do
 		for fromGate, layer2 in pairs(layer1) do
 			for fromNode, wire in pairs(layer2) do
-				updateHitbox(fromGate, gateID, fromNode, toNode)
+				updateHitbox(wire)
 			end
 		end
 	end
@@ -83,7 +113,7 @@ function Connections.UpdateAllWireHitboxes(gateID)
 	for fromNode, layer1 in pairs(outgoing[gateID] or {}) do
 		for toGate, layer2 in pairs(layer1) do
 			for toNode, wire in pairs(layer2) do
-				updateHitbox(gateID, toGate, fromNode, toNode)
+				updateHitbox(wire)
 			end
 		end
 	end

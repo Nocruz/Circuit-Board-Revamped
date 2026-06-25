@@ -6,10 +6,14 @@
 -- Requires and Services
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 local Permissions = require(script.Permissions)
 local Interactions = require(script.Interactions)
-local GateService = require(script.Parent.GateService)
+
+local GateService = require(ServerScriptService.GateService)
+local Connections = require(ServerScriptService.GateService.Connections)
+local GatesHandler = require(ServerScriptService.GateService.Handlers.GatesHandler)
 
 -- References
 local gatesFolder = Workspace:FindFirstChild("Gates")
@@ -109,8 +113,7 @@ Interactions.CreateEvent("DisconnectSingle", { "GateID", "GateID", "string", "st
 		return false, "Lacks permissions to cut wires to this gate"
 	end
 	
-	print("MOCK: Disconnected wire from gate " .. fromGate.ID .. ", node \"" .. fromNode .. "\" to gate ".. toGate.ID .. ", node \"" .. toNode .. "\".")
-	return true
+	return GateService.Disconnect(fromGate.ID, toGate.ID, fromNode, toNode)
 end)
 
 Interactions.CreateEvent("DisconnectAllOutgoing", { "GateID" }, function(player: Player, fromGate)
@@ -118,8 +121,23 @@ Interactions.CreateEvent("DisconnectAllOutgoing", { "GateID" }, function(player:
 		return false, "Lacks permissions to cut wires from this gate"
 	end
 	
-	-- TODO: Check permissions for all outgoings. If not admissible, skip that wire
+	-- Remember: Gate.Specification.Nodes: { "Inputs": { string }, "Outputs": { string } }
+	for _, output in ipairs(fromGate.Specification.Nodes.Outputs) do
+		local outgoing = Connections.GetAllOutgoing(fromGate.ID, output)
+		for toGateID, connections in pairs(outgoing) do
+			if not Permissions.CanPlayerDo(player.UserId, GatesHandler.Get(toGateID).OwnerID, "Wire") then
+				print("Lacks permissions to cut wires to this gate")
+				continue
+			end
+			
+			for toNode, wire in pairs(connections) do
+				local success, message = GateService.Disconnect(fromGate.ID, toGateID, output, toNode)
+				if not success then
+					return success, message
+				end
+			end
+		end
+	end
 	
-	print("MOCK: Disconnected all wires from gate " .. fromGate.ID)
 	return true
 end)

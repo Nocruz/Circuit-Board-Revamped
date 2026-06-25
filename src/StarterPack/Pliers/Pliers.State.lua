@@ -6,10 +6,14 @@
 -- Requires and services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterPlayerScripts = game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts")
+local Workspace = game:GetService("Workspace")
 
 local LocalServices = StarterPlayerScripts.Services
 local PointerService = require(LocalServices.PointerService)
 local MessageService = require(LocalServices.MessageService)
+
+-- References
+local wiresFolder = Workspace:WaitForChild("Wires")
 
 -- Visuals
 local HighlightPrefab: SelectionBox = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("PliersHighlight")
@@ -109,6 +113,8 @@ function State:Enter()
 		self:UpdateHighlights(instance, gate)
 	end)
 	self:UpdateHighlights(PointerService.HoveredInstance, PointerService.HoveredGate)
+	
+	PointerService.RemoveFromFilter(wiresFolder)
 end
 
 function State:Activated()
@@ -145,6 +151,8 @@ function State:Exit()
 		self.HoverConnection:Disconnect()
 		self.HoverConnection = nil
 	end
+	
+	PointerService.AddToFilter(wiresFolder)
 end
 
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------

@@ -70,6 +70,12 @@ assert(safezonesFolder ~= nil, "No safezones! Forgot to update this script?")
 ignoreInstance(safezonesFolder)
 safezonesFolder.DescendantAdded:Connect(function(descendant) ignoreInstance(descendant) end)
 
+-- Ignore Wires too (With pliers, override this initial set)
+local wiresFolder = Workspace:WaitForChild("Wires")
+assert(wiresFolder ~= nil, "No Wires! Forgot to update this script?")
+ignoreInstance(wiresFolder)
+wiresFolder.DescendantAdded:Connect(function(descendant) ignoreInstance(descendant) end)
+
 -- ----------------------------- ------------ DEBUGGING UTILS ------------ -----------------------------
 
 local DEBUG_ATTRIBUTE = "Debug"

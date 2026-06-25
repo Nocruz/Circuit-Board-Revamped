@@ -147,6 +147,39 @@ function GateService.Connect(fromGateID: number, toGateID: number, fromNode: str
 	return true
 end
 
+function GateService.Disconnect(fromGateID: number, toGateID: number, fromNode: string, toNode: string): (boolean, string?)
+	local fromGate, toGate = GatesHandler.Get(fromGateID), GatesHandler.Get(toGateID)
+	
+	-- Existance validation
+	if fromGate == nil then
+		warn("Tried to connect gate of ID " .. fromGateID ..", but it doesn't exist")
+		return false
+	end
+	if toGate == nil then
+		warn("Tried to connect gate of ID " .. toGateID ..", but it doesn't exist")
+		return false
+	end
+	if table.find(fromGate.Specification.Nodes.Outputs, fromNode) == nil then
+		warn("Tried to connect node \"" .. fromNode .. "\" of a gate of specification \"" .. fromGate.Specification.Name .. "\" (" .. fromGateID .. "), despite it not having any Output Node with that name.")
+		return false
+	end
+	if table.find(toGate.Specification.Nodes.Inputs, toNode) == nil then
+		warn("Tried to connect node \"" .. toNode .. "\" of a gate of specification \"" .. toGate.Specification.Name .. "\" (" .. toGateID .. "), despite it not having any Input Node with that name.")
+		return false
+	end
+	
+	-- Are they not already connected?
+	if Connections.Get(fromGateID, toGateID, fromNode, toNode) == nil then
+		return false, "These nodes are not connected!"
+	end
+	
+	Connections.Destroy(fromGateID, toGateID, fromNode, toNode)
+	
+	Updates.Propagate(toGateID)
+	
+	return true
+end
+
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
 
 return GateService
