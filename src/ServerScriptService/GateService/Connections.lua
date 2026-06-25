@@ -101,6 +101,46 @@ function Connections.Destroy(fromID, toID, fromNode, toNode)
 	end
 end
 
+function Connections.DestroyAll(gateID)
+	local connections = {}
+	local affected = {}
+	
+	-- Gets all connections
+	for fromNode, layer1 in pairs(outgoing[gateID] or {}) do
+		for toGate, layer2 in pairs(layer1) do
+			table.insert(affected, toGate)
+			for toNode, wire in pairs(layer2) do
+				table.insert(connections, {
+					fromID = gateID,
+					toID = toGate,
+					fromNode = fromNode,
+					toNode = toNode
+				})
+			end
+		end
+	end
+	
+	for toNode, layer1 in pairs(incoming[gateID] or {}) do
+		for fromGate, layer2 in pairs(layer1) do
+			for fromNode, wire in pairs(layer2) do
+				table.insert(connections, {
+					fromID = fromGate,
+					toID = gateID,
+					fromNode = fromNode,
+					toNode = toNode
+				})
+			end
+		end
+	end
+	
+	-- Destroys all
+	for _, connection in ipairs(connections) do
+		Connections.Destroy(connection.fromID, connection.toID, connection.fromNode, connection.toNode)
+	end
+	
+	return affected
+end
+
 function Connections.UpdateAllWireHitboxes(gateID)
 	for toNode, layer1 in pairs(incoming[gateID] or {}) do
 		for fromGate, layer2 in pairs(layer1) do

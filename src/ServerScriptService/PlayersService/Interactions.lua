@@ -47,6 +47,12 @@ local ParameterSolver: { [TParameter]: (... any) -> (boolean, string | any) } = 
 		if not cframe or typeof(cframe) ~= "CFrame" then
 			return false, "Invalid parameters! CFrame was not a CFrame"
 		end
+		if cframe.X ~= cframe.X or cframe.Y ~= cframe.Y or cframe.Z ~= cframe.Z then
+			return false, "Invalid position! NaN values?"
+		end
+		if cframe.Y < 0 then
+			return false, "Invalid position! Too low!"
+		end
 		if Safezones.IsGateInSafezone(cframe.Position, Vector3.new(2, 1, 2)) then
 			return false, "Invalid position! Too close to a safezone"
 		end

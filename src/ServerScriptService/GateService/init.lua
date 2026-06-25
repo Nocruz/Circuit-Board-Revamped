@@ -101,6 +101,25 @@ function GateService.Instantiate(ownerID: number, specificationName: string, cfr
 	return nextID - 1	
 end
 
+function GateService.Destroy(gateID: number)
+	local gate = GatesHandler.Get(gateID)
+	if gate == nil then
+		warn("Tried to destroy gate of ID " .. gateID .. ", but it doesn't exist")
+		return
+	end
+	
+	Updates.CancelAllWakeups(gateID)
+	
+	local affected = Connections.DestroyAll(gateID)
+	for _, gateID in ipairs(affected) do
+		Updates.Propagate(gateID)
+	end
+	
+	GatesHandler.Remove(gateID)
+	
+	gate.Model:Destroy()
+end
+
 function GateService.Move(gateID: number, cframe: CFrame)
 	local gate = GatesHandler.Get(gateID)
 	if gate == nil then

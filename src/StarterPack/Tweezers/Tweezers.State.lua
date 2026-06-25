@@ -25,6 +25,7 @@ local Terrain = Workspace:WaitForChild("Terrain")
 -- Events
 local permissionQuery: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Queries"):WaitForChild("Permission")
 local moveEvent: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("Move")
+local destroyEvent: RemoteFunction =ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("Destroy")
 
 -- State definition
 local State = {}
@@ -137,6 +138,11 @@ function State:Activated()
 		local context = DeactivationContext()
 		if context == "Valid" then
 			local success, message = moveEvent:InvokeServer(self.Gate:GetAttribute("GateID"), self.Gate:GetPivot())
+			if not success then
+				MessageService.SendMessage(message)
+			end
+		elseif context == "Invalid" then
+			local success, message = destroyEvent:InvokeServer(self.Gate:GetAttribute("GateID"))
 			if not success then
 				MessageService.SendMessage(message)
 			end

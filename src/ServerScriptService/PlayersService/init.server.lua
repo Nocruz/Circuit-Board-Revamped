@@ -80,6 +80,16 @@ Interactions.CreateEvent("Spawn", { "GateID", "CFrame" }, function(player: Playe
 	return true
 end)
 
+-- Gate destroyer
+Interactions.CreateEvent("Destroy", { "GateID" }, function(player: Player, gate)
+	if not Permissions.CanPlayerDo(player.UserId, gate.OwnerID, "Delete") then
+		return false, "Lacks permissions to destroy this gate"
+	end
+	
+	GateService.Destroy(gate.ID)
+	return true
+end)
+
 -- Gate mover
 Interactions.CreateEvent("Move", { "GateID", "CFrame" }, function(player: Player, gate, cframe: CFrame)
 	if not Permissions.CanPlayerDo(player.UserId, gate.OwnerID, "Move") then

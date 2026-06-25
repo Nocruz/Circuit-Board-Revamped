@@ -17,6 +17,10 @@ function GatesHandler.Get(id: number)
 	return instances[id]
 end
 
+function GatesHandler.Remove(id: number)
+	instances[id] = nil
+end
+
 function GatesHandler.Debug()
 	print("Debugging gate instances:")
 	for id, gate in pairs(instances) do
