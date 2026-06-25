@@ -10,6 +10,8 @@ local SpecificationsHandler = require(script.Handlers.SpecificationsHandler)
 
 local Models = require(script.Models)
 local Connections = require(script.Connections)
+local Updates = require(script.Updates)
+local Signals = require(script.Signals)
 
 -- ----------------------------- ----------- MODULE DEFINITION ----------- -----------------------------
 
@@ -27,6 +29,35 @@ function GateService.RegisterSpecification(specification, name: string?)
 	SpecificationsHandler.Add(specification)
 	return
 end
+
+-- ----------------------------- ------------ GATE SUPERCLASS ------------ -----------------------------
+
+local SUPERCLASS_GATE = { }
+function SUPERCLASS_GATE:ReadInput(nodeName: string)
+	local incoming = Connections.GetAllIncoming(self.ID, nodeName)
+	
+	local signals = {}
+	for fromGateID, connections in pairs(incoming) do
+		local fromGate = GatesHandler.Get(fromGateID)
+		assert(fromGate, "Gate " .. fromGateID .. " does not exist, but is registered as input of gate " .. self.ID)
+		for outputNode in pairs(connections) do
+			assert(fromGate.Nodes.Outputs[outputNode], "Gate " .. fromGateID .. " is connected to " .. self.ID .. " from '" .. outputNode .. "' output node, but it doesnt exist")
+			assert(fromGate.Nodes.Signals[outputNode] ~= nil, "Gate " .. fromGateID .. " is missing '" .. outputNode .. "' output node key in Signals table")
+			table.insert(signals, fromGate.Nodes.Signals[outputNode])
+		end
+	end
+	
+	local raw = Signals.Collapse(signals)
+	return {
+		Raw = raw,
+		AsString = function() return Signals.toString(raw) end,
+		AsNumber = function() return Signals.toNumber(raw) end,
+		AsBoolean = function() return Signals.toBoolean(raw) end
+	}
+end
+
+-- ----------------------------- ----------- INSTANCE FUNCTIONS ---------- -----------------------------
+
 
 -- ----------------------------- ----------- INSTANCE FUNCTIONS ---------- -----------------------------
 
@@ -60,11 +91,14 @@ function GateService.Instantiate(ownerID: number, specificationName: string, cfr
 		
 		gate.Attributes = {}
 		for name, attributeData in pairs(specification.AttributeData) do gate.Attributes[name] = if attributes[name] ~= nil then attributes[name] else attributeData.Default end
+		
+		setmetatable(gate, { __index = SUPERCLASS_GATE })
 	end
 	
 	GatesHandler.Add(nextID, gate)
 	
 	if specification.Setup then specification.Setup(gate) end
+	Updates.Propagate(nextID)
 	
 	nextID = nextID + 1
 	return nextID - 1	
@@ -107,10 +141,10 @@ function GateService.Connect(fromGateID: number, toGateID: number, fromNode: str
 		return false, "These nodes are already connected"
 	end
 	
-	Connections.new(fromGateID, toGateID, fromGate.Model.Nodes.Outputs[fromNode], toGate.Model.Nodes.Inputs[toNode])
+	local wire = Connections.new(fromGateID, toGateID, fromGate.Model.Nodes.Outputs[fromNode], toGate.Model.Nodes.Inputs[toNode])
 	
-	Connections.Debug(fromGateID)
-	Connections.Debug(toGateID)
+	Updates.RegisterVisualChange(wire, { Color = ColorSequence.new(if Signals.toBoolean(fromGate.Nodes.Signals[fromNode]) then Color3.new(0.9, 0.9, 1) else Color3.new(0, 0, 0.1)) })
+	Updates.Propagate(toGateID)
 	
 	return true
 end

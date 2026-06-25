@@ -77,6 +77,20 @@ function Connections.Get(fromGate: number, toGate: number, fromNode: string, toN
 	else nil
 end
 
+function Connections.GetAllOutgoing(fromGate: number, fromNode: string)
+	return if outgoing[fromGate] and
+						outgoing[fromGate][fromNode]
+	then outgoing[fromGate][fromNode]
+	else {}
+end
+
+function Connections.GetAllIncoming(toGate: number, toNode: string)
+	return if incoming[toGate] and
+						incoming[toGate][toNode]
+	then incoming[toGate][toNode]
+	else {}
+end
+
 -- ----------------------------- --------------- DEBUGGIN ---------------- -----------------------------
 
 function Connections.Debug(gateID: number)
