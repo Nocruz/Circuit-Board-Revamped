@@ -98,3 +98,28 @@ Interactions.CreateEvent("Connect", { "GateID", "GateID", "string", "string" }, 
 	
 	return GateService.Connect(fromGate.ID, toGate.ID, fromNode, toNode)
 end)
+
+-- Gate disconnect events
+Interactions.CreateEvent("DisconnectSingle", { "GateID", "GateID", "string", "string" }, function(player: Player, fromGate, toGate, fromNode: string, toNode: string)
+	if not Permissions.CanPlayerDo(player.UserId, fromGate.OwnerID, "Wire") then
+		return false, "Lacks permissions to cut wires from this gate"
+	end
+	
+	if not Permissions.CanPlayerDo(player.UserId, toGate.OwnerID, "Wire") then
+		return false, "Lacks permissions to cut wires to this gate"
+	end
+	
+	print("MOCK: Disconnected wire from gate " .. fromGate.ID .. ", node \"" .. fromNode .. "\" to gate ".. toGate.ID .. ", node \"" .. toNode .. "\".")
+	return true
+end)
+
+Interactions.CreateEvent("DisconnectAllOutgoing", { "GateID" }, function(player: Player, fromGate)
+	if not Permissions.CanPlayerDo(player.UserId, fromGate.OwnerID, "Wire") then
+		return false, "Lacks permissions to cut wires from this gate"
+	end
+	
+	-- TODO: Check permissions for all outgoings. If not admissible, skip that wire
+	
+	print("MOCK: Disconnected all wires from gate " .. fromGate.ID)
+	return true
+end)
