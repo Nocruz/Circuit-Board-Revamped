@@ -58,9 +58,6 @@ end
 
 -- ----------------------------- ----------- INSTANCE FUNCTIONS ---------- -----------------------------
 
-
--- ----------------------------- ----------- INSTANCE FUNCTIONS ---------- -----------------------------
-
 local nextID = 1
 
 --- Instantiates a new Gate, and returns its ID
@@ -112,7 +109,8 @@ function GateService.Move(gateID: number, cframe: CFrame)
 	end
 	
 	gate.Model:PivotTo(cframe)
-	-- Move all connections
+	
+	Connections.UpdateAllWireHitboxes(gateID)
 end
 
 function GateService.Connect(fromGateID: number, toGateID: number, fromNode: string, toNode: string): (boolean, string?)

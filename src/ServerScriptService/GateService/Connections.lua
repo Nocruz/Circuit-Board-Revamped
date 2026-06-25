@@ -29,12 +29,15 @@ local incoming = {}
 
 -- ----------------------------- ---------------- HELPERS ---------------- -----------------------------
 
-local function GetHitboxTraslation(attachment0: Attachment, attachment1: Attachment): (Vector3, CFrame)
-	local fromPosition = attachment0.WorldPosition
-	local toPosition = attachment1.WorldPosition
+local function updateHitbox(fromID, toID, fromNode, toNode)
+	local wire = Connections.Get(fromID, toID, fromNode, toNode) :: Beam & { Hitbox: BasePart } 
+	local fromPosition = wire.Attachment0.WorldPosition
+	local toPosition = wire.Attachment1.WorldPosition
 	local length = (toPosition - fromPosition).Magnitude
 	
-	return Vector3.new(0.2, 0.2, length), CFrame.lookAt(fromPosition, toPosition) * CFrame.new(0, 0, -length / 2)
+	local newSize, newCFrame = Vector3.new(0.2, 0.2, length), CFrame.lookAt(fromPosition, toPosition) * CFrame.new(0, 0, -length / 2)
+	wire.Hitbox.Size = newSize
+	wire.Hitbox.CFrame = newCFrame
 end
 
 -- ----------------------------- ----------- MODULE DEFINITION ----------- -----------------------------
@@ -64,7 +67,26 @@ function Connections.new(fromID: number, toID: number, fromNode: BasePart, toNod
 	incoming[toID][toNode.Name][fromID] = incoming[toID][toNode.Name][fromID] or {}
 	incoming[toID][toNode.Name][fromID][fromNode.Name] = wire
 	
+	updateHitbox(fromID, toID, fromNode.Name, toNode.Name)
 	return wire
+end
+
+function Connections.UpdateAllWireHitboxes(gateID)
+	for toNode, layer1 in pairs(incoming[gateID] or {}) do
+		for fromGate, layer2 in pairs(layer1) do
+			for fromNode, wire in pairs(layer2) do
+				updateHitbox(fromGate, gateID, fromNode, toNode)
+			end
+		end
+	end
+	
+	for fromNode, layer1 in pairs(outgoing[gateID] or {}) do
+		for toGate, layer2 in pairs(layer1) do
+			for toNode, wire in pairs(layer2) do
+				updateHitbox(gateID, toGate, fromNode, toNode)
+			end
+		end
+	end
 end
 
 -- ----------------------------- ---------------- QUERIES ---------------- -----------------------------
