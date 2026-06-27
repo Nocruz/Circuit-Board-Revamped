@@ -19,7 +19,7 @@ local queriesFolder = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Que
 
 -- ----------------------------- --------- PARAMETER RESOLUTION ---------- -----------------------------
 
-export type TParameter = "GateID" | "Action" | "CFrame" | "string"
+export type TParameter = "GateID" | "Action" | "CFrame" | "string" | "AttributesTable"
 
 local ParameterSolver: { [TParameter]: (... any) -> (boolean, string | any) } = {
 	["GateID"] = function(gateID: number)
@@ -64,6 +64,20 @@ local ParameterSolver: { [TParameter]: (... any) -> (boolean, string | any) } = 
 			return false, "Invalid parameters! String was not a string"
 		end
 		return true, string
+	end,
+	
+	["AttributesTable"] = function(table: { any })
+		if not table or type(table) ~= "table" then
+			return false, "Invalid parameters! AttributesTable was not a table"
+		end
+		
+		for name, value in pairs(table) do
+			if type(name) ~= "string" then
+				return false, "Invalid parameters! Check with a mod"
+			end
+		end
+		
+		return true, table
 	end
 }
 

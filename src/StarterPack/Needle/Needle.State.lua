@@ -20,7 +20,7 @@ local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 
 -- Events
 local getDataQuery: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Queries"):WaitForChild("GetAttributeData")
-local changeAttributesQuery: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Queries"):WaitForChild("SetAttributes")
+local changeAttributesEvent: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("SetAttributes")
 
 -- State definition
 local State = {}
@@ -39,7 +39,7 @@ function State:ApplyState()
 	
 	if next(changes) == nil then return true end
 	
-	local success, result = changeAttributesQuery:InvokeServer(self.SelectedGate:GetAttribute("GateID"), changes)
+	local success, result = changeAttributesEvent:InvokeServer(self.SelectedGate:GetAttribute("GateID"), changes)
 	if not success then
 		MessageService.SendMessage(result)
 	end

@@ -11,8 +11,11 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local Permissions = require(script.Permissions)
 local Interactions = require(script.Interactions)
 
+
 local GateService = require(ServerScriptService.GateService)
 local Connections = require(ServerScriptService.GateService.Connections)
+local Attributes  = require(ServerScriptService.GateService.Attributes)
+local Updates = require(ServerScriptService.GateService.Updates)
 local GatesHandler = require(ServerScriptService.GateService.Handlers.GatesHandler)
 
 -- References
@@ -170,4 +173,21 @@ Interactions.CreateQuery("GetAttributeData", { "GateID" }, function(player: Play
 	end
 	
 	return true, returnData
+end)
+
+Interactions.CreateEvent("SetAttributes", { "GateID", "AttributesTable" }, function(player: Player, gate, attributeTable)
+	if not Permissions.CanPlayerDo(player.UserId, gate.OwnerID, "Configure") then
+		return false, "Lacks permissions to change this gate's attributes!"
+	end
+	
+	for name, value in pairs(attributeTable) do
+		local valid, attribute = Attributes.IsValid(value, gate.Specification.AttributeData[name])
+		if not valid then
+			return false, "Attribute " .. name .. " did not have a valid value! Try again"
+		end
+		gate.Attributes[name] = attribute
+	end
+	
+	Updates.Propagate(gate.ID)
+	return true
 end)

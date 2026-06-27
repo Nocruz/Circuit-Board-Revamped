@@ -24,20 +24,42 @@ export type TAttributeData<T> = {
 
 local Attributes = {}
 
-function Attributes.IsValid(attribute: string | number | boolean, specification: TAttributeData<string | number | boolean>): boolean
+function Attributes.IsValid(attribute: string | number | boolean, attributeData: TAttributeData<string | number | boolean>): boolean
+	if not attributeData then return false end
 	if type(attribute) ~= "string" and type(attribute) ~= "number" and type(attribute) ~= "boolean" then return false end
-	for i, predicate in ipairs(specification.Predicates) do
+	
+	local targetType = type(attributeData.Default)
+	if type(attribute) ~= targetType then
+		if targetType == "string" then
+			attribute = tostring(attribute)
+		
+		elseif targetType == "number" then
+			local asNumber = tonumber(attribute)
+			if asNumber ~= nil then
+				attribute = asNumber
+			else
+				return false
+			end
+		
+		elseif targetType == "boolean" then
+			if attribute == "true" then attribute = true
+			elseif attribute == "false" then attribute = false
+			else return false end
+		end
+	end
+	
+	for i, predicate in ipairs(attributeData.Predicates) do
 		if not predicate(attribute) then return false end
 	end
 	
-	if specification.AllowedValues then
-		for i, value in ipairs(specification.AllowedValues) do
-			if attribute == value then return true end
+	if attributeData.AllowedValues then
+		for i, value in ipairs(attributeData.AllowedValues) do
+			if attribute == value then return true, attribute end
 		end
 		return false
 	end
 	
-	return true
+	return true, attribute
 end
 
 function Attributes.Get(attribute: string | number | boolean, specification: TAttributeData<string | number | boolean>)
