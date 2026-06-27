@@ -16,7 +16,7 @@ local MessageService = require(LocalServices.MessageService)
 local wiresFolder = Workspace:WaitForChild("Wires")
 
 -- Visuals
-local HighlightPrefab: SelectionBox = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("PliersHighlight")
+local highlightPrefab: SelectionBox = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("PliersHighlight")
 local COLOR_SELECTED: ColorSequence = ColorSequence.new(Color3.new(1, 0, 0), Color3.new(1, 0, 0))
 
 -- Events
@@ -107,7 +107,7 @@ function State.new(player: Player, character: Model)
 end
 
 function State:Enter()
-	self.SelectedGateHighlight = HighlightPrefab:Clone()
+	self.SelectedGateHighlight = highlightPrefab:Clone()
 	
 	self.HoverConnection = PointerService.OnHoverChanged:Connect(function(instance, gate)
 		self:UpdateHighlights(instance, gate)
