@@ -20,6 +20,7 @@ local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 
 -- Events
 local getDataQuery: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Queries"):WaitForChild("GetAttributeData")
+local changeAttributesQuery: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Queries"):WaitForChild("SetAttributes")
 
 -- State definition
 local State = {}
@@ -27,7 +28,25 @@ State.__index = State
 
 -- ----------------------------- --------- HELPER METHODS -------- ------------------------------
 
-function State:CreateGUI()
+function State:ApplyState()
+	local changes = {}
+	
+	for _, row: Instance in ipairs(self.Gui.Frame.ScrollingFrame:GetChildren()) do
+		if not row:IsA("Frame") then continue end
+		local valueHolder = row:FindFirstChild("TextBox") or row:FindFirstChild("TextButton")
+		changes[row.Name] = valueHolder.Text
+	end
+	
+	if next(changes) == nil then return true end
+	
+	local success, result = changeAttributesQuery:InvokeServer(self.SelectedGate:GetAttribute("GateID"), changes)
+	if not success then
+		MessageService.SendMessage(result)
+	end
+	return success
+end
+
+function State:CreateGUI(attributesData)
 	self:DestroyGui()
 	self.SelectedGate = self.HoveredGate
 	
@@ -35,10 +54,37 @@ function State:CreateGUI()
 	self.Gui.Adornee = self.SelectedGate
 	self.Gui.Parent  = playerGui
 	self.Gui.GateName.Text = self.SelectedGate.Name
+	self.GuiTogglersConnections = {}
 	self.GuiClosedConnection = self.Gui.ApplyButton.Activated:Connect(function()
-		print("Button clicked!")
-		self:DestroyGui()
+		if self:ApplyState() then
+			self:DestroyGui()
+		end
 	end)
+	
+	-- Instantiate all the attribute frame editors
+	for name, data in pairs(attributesData) do
+		if data.AllowedValues == nil then
+			local row: Frame & any = self.Gui.InputAttributePrefab:Clone()
+			row.Visible = true
+			row.Name = name
+			row.TextLabel.Text = name
+			row.TextBox.Text = tostring(data.Value)
+			row.Parent = self.Gui.Frame.ScrollingFrame
+		elseif #data.AllowedValues > 0 then
+			local row: Frame & any = self.Gui.ToggleAttributePrefab:Clone()
+			row.Visible = true
+			row.Name = name
+			row.TextLabel.Text = name
+			row.TextButton.Text = tostring(data.Value)
+			row.Parent = self.Gui.Frame.ScrollingFrame
+			row:SetAttribute("AllowedValues_Index", table.find(data.AllowedValues, data.Value))
+			table.insert(self.GuiTogglersConnections, row.TextButton.Activated:Connect(function()
+				local newIndex = ((row:GetAttribute("AllowedValues_Index") :: number) % #data.AllowedValues) + 1
+				row.TextButton.Text = tostring(data.AllowedValues[newIndex])
+				row:SetAttribute("AllowedValues_Index", newIndex)
+			end))
+		end
+	end
 end
 
 function State:DestroyGui()
@@ -47,6 +93,12 @@ function State:DestroyGui()
 			self.GuiClosedConnection:Disconnect()
 			self.GuiClosedConnection = nil
 		end
+		
+		for _, connection in ipairs(self.GuiTogglersConnections) do
+			connection:Disconnect()
+		end
+		table.clear(self.GuiTogglersConnections)
+		self.GuiTogglersConnections = nil
 		
 		self.Gui:Destroy()
 		self.Gui = nil
@@ -91,6 +143,7 @@ function State.new(player: Player, character: Model)
 	
 	self.Gui = nil
 	self.GuiClosedConnection = nil
+	self.GuiTogglersConnections = nil
 	self.SelectedGate = nil
 	
 	return self

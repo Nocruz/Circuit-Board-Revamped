@@ -151,3 +151,23 @@ Interactions.CreateEvent("DisconnectAllOutgoing", { "GateID" }, function(player:
 	
 	return true
 end)
+
+-- Needle events
+Interactions.CreateQuery("GetAttributeData", { "GateID" }, function(player: Player, gate)
+	if not Permissions.CanPlayerDo(player.UserId, gate.OwnerID, "Configure") then
+		return false, "Lacks permissions to change this gate's attributes!"
+	end
+	
+	local returnData = {}
+	local attributeData = gate.Specification.AttributeData
+	for name, data in pairs(attributeData) do
+		returnData[name] = {
+			Value = gate.Attributes[name],
+			AllowedValues = if typeof(attributeData[name].Default) == "boolean"
+				then { true, false }
+				else attributeData[name].AllowedValues
+		}
+	end
+	
+	return true, returnData
+end)
