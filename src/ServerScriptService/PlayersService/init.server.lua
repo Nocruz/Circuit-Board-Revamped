@@ -52,8 +52,12 @@ Players.PlayerRemoving:Connect(function(player: Player, reason: Enum.PlayerExitR
 	destroyAllGatesTimeouts[player.UserId] = task.delay(TIME_TO_DESTROY_GATES_AFTER_LEAVING, function()
 		local playerFolder = gatesFolder:FindFirstChild(tostring(player.UserId))
 		if playerFolder then
-			-- TODO: Implement gate destruction
-			warn("Leave timer has ran out for player " .. player.UserId .. ", but I have not implemented all gate destruction!")
+			for _, gate in ipairs(playerFolder:GetChildren()) do
+				local gateID = gate:GetAttribute("GateID")
+				if not gateID then warn("Player " .. player.UserId .. " had an unknown object inside their Gates folder!"); continue end;
+				GateService.Destroy(gateID)
+			end
+			warn("Leave timer has ran out for player " .. player.UserId .. ", and its gates were probably destroyed, but its not certain. Remove this once confirmed it works!")
 		end
 		
 		destroyAllGatesTimeouts[player.UserId] = nil
