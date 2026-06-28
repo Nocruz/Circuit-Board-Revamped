@@ -140,11 +140,13 @@ function State:Activated()
 			local success, message = moveEvent:InvokeServer(self.Gate:GetAttribute("GateID"), self.Gate:GetPivot())
 			if not success then
 				MessageService.SendMessage(message)
+				self.Gate:PivotTo(self.GatePreviousCFrame)
 			end
 		elseif context == "Invalid" then
 			local success, message = destroyEvent:InvokeServer(self.Gate:GetAttribute("GateID"))
 			if not success then
 				MessageService.SendMessage(message)
+				self.Gate:PivotTo(self.GatePreviousCFrame)
 			end
 		else
 			self.Gate:PivotTo(self.GatePreviousCFrame)
