@@ -166,6 +166,11 @@ function State:Activated()
 			return
 		end
 		
+		if not next(result) then
+			MessageService.SendMessage("Gate has no attributes to change!")
+			return
+		end
+		
 		self:CreateGUI(result)
 	end
 end
