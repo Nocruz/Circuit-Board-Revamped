@@ -50,7 +50,7 @@ local ParameterSolver: { [TParameter]: (... any) -> (boolean, string | any) } = 
 		if cframe.X ~= cframe.X or cframe.Y ~= cframe.Y or cframe.Z ~= cframe.Z then
 			return false, "Invalid position! NaN values?"
 		end
-		if cframe.Y < 0 then
+		if cframe.Y < -0.005 then
 			return false, "Invalid position! Too low!"
 		end
 		if Safezones.IsGateInSafezone(cframe.Position, Vector3.new(2, 1, 2)) then
