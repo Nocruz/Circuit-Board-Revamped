@@ -33,6 +33,7 @@ end
 -- ----------------------------- ------------ GATE SUPERCLASS ------------ -----------------------------
 
 local SUPERCLASS_GATE = { }
+
 function SUPERCLASS_GATE:ReadInput(nodeName: string)
 	local incoming = Connections.GetAllIncoming(self.ID, nodeName)
 	
@@ -49,6 +50,35 @@ function SUPERCLASS_GATE:ReadInput(nodeName: string)
 	
 	local raw = Signals.Collapse(signals)
 	return {
+		Raw = raw,
+		AsString = function() return Signals.toString(raw) end,
+		AsNumber = function() return Signals.toNumber(raw) end,
+		AsBoolean = function() return Signals.toBoolean(raw) end
+	}
+end
+
+function SUPERCLASS_GATE:ReadAttributeFromNode(attributeName: string, nodeName: string)
+	local attribute = self.Attributes[attributeName]
+	assert(attribute ~= nil, "Gate " .. self.ID .. " has no attribute " .. attributeName)
+	assert(table.find(self.Specification.Nodes.Inputs, nodeName), "Gate " .. self.ID .. " has no node " .. nodeName)
+	
+	local inputConnections = Connections.GetAllIncoming(self.ID, nodeName)
+	
+	local signals = {}
+	for fromGateID, connections in pairs(inputConnections) do
+		local fromGate = GatesHandler.Get(fromGateID)
+		assert(fromGate, "Gate " .. fromGateID .. " does not exist, but is registered as input of gate " .. self.ID)
+		for outputNode in pairs(connections) do
+			assert(fromGate.Nodes.Outputs[outputNode], "Gate " .. fromGateID .. " is connected to " .. self.ID .. " from '" .. outputNode .. "' output node, but it doesnt exist")
+			assert(fromGate.Nodes.Signals[outputNode] ~= nil, "Gate " .. fromGateID .. " is missing '" .. outputNode .. "' output node key in Signals table")
+			table.insert(signals, fromGate.Nodes.Signals[outputNode])
+		end
+	end
+	
+	if next(signals) == nil then return false, attribute end
+	
+	local raw = Signals.Collapse(signals)
+	return true, {
 		Raw = raw,
 		AsString = function() return Signals.toString(raw) end,
 		AsNumber = function() return Signals.toNumber(raw) end,
@@ -114,6 +144,8 @@ function GateService.Destroy(gateID: number)
 	for _, gateID in ipairs(affected) do
 		Updates.Propagate(gateID)
 	end
+	
+	if gate.Specification.Destroy then gate.Specification.Destroy(gate) end
 	
 	GatesHandler.Remove(gateID)
 	
