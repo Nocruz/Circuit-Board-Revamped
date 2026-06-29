@@ -89,17 +89,24 @@ local Interactions = {}
 
 local QUERY_COOLDOWN = 0.05 -- seconds
 local EVENT_COOLDOWN = 0.1 -- seconds
-local playerCooldowns: { [number]: true } = {}
+local queryCooldowns: { [number]: true } = {}
+local eventCooldowns: { [number]: true } = {}
 
-local function IsCooldowned(id: number): boolean
-	return playerCooldowns[id] ~= nil
+local function IsCooldowned(id: number, from: "Query" | "Event"): boolean
+	return if from == "Query"
+		then queryCooldowns[id] ~= nil
+		else eventCooldowns[id] ~= nil
 end
 
-local function SetCooldown(id: number, duration: number)
-	if playerCooldowns[id] then return end
+local function SetCooldown(id: number, duration: number, from: "Query" | "Event")
+	local cooldowns = if from == "Query"
+		then queryCooldowns
+		else eventCooldowns
 	
-	playerCooldowns[id] = true
-	task.delay(duration, function() playerCooldowns[id] = nil end)
+	if cooldowns[id] then return end
+	
+	cooldowns[id] = true
+	task.delay(duration, function() cooldowns[id] = nil end)
 end
 
 -- ----------------------------- ----------- QUERY PERMISSIONS ----------- -----------------------------
@@ -115,11 +122,11 @@ function Interactions.CreateQuery(name: string, parameterTypes: { TParameter }, 
 	query.OnServerInvoke = function(player: Player, ...): (boolean, string?)
 		local parameters = { ... }
 		
-		if IsCooldowned(player.UserId) then
+		if IsCooldowned(player.UserId, "Query") then
 			print(player.Name .. " tried to query, but is still in cooldown")
 			return false, "Too fast!"
 		end
-		SetCooldown(player.UserId, QUERY_COOLDOWN)
+		SetCooldown(player.UserId, QUERY_COOLDOWN, "Query")
 		
 		if #parameters < #parameterTypes then
 			warn("Player " .. player.Name .. " called a query with wrong parameter count")
@@ -151,11 +158,11 @@ function Interactions.CreateEvent(name: string, parameterTypes: { TParameter }, 
 	event.OnServerInvoke = function(player: Player, ...): (boolean, string?)
 		local parameters = { ... }
 		
-		if IsCooldowned(player.UserId) then
+		if IsCooldowned(player.UserId, "Event") then
 			print(player.Name .. " tried to execute an event, but is still in cooldown")
 			return false, "Too fast!"
 		end
-		SetCooldown(player.UserId, EVENT_COOLDOWN)
+		SetCooldown(player.UserId, EVENT_COOLDOWN, "Event")
 		
 		if #parameters < #parameterTypes then
 			warn("Player " .. player.Name .. " called an event with wrong parameter count")

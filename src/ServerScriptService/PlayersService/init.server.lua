@@ -11,7 +11,6 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local Permissions = require(script.Permissions)
 local Interactions = require(script.Interactions)
 
-
 local GateService = require(ServerScriptService.GateService)
 local Connections = require(ServerScriptService.GateService.Connections)
 local Attributes  = require(ServerScriptService.GateService.Attributes)
@@ -194,4 +193,31 @@ Interactions.CreateEvent("SetAttributes", { "GateID", "AttributesTable" }, funct
 	
 	Updates.Propagate(gate.ID)
 	return true
+end)
+
+-- Save System events
+local dummySaves = {
+	Example1 = {
+		connections = { 1, 1, 1, 1, 1, 1, 1 },
+		gates = {1, 1, 1, 1, 1,},
+		timestamp = os.time(),
+		ver = 1
+	},
+	Example2 = {
+		connections = { },
+		gates = {1, 1,},
+		timestamp = os.time() - 100,
+		ver = 1
+	},
+	Example3 = {
+		connections = { 1, 1, 1, 1, 1, 1, 1 },
+		gates = {1, 1,},
+		timestamp = os.time() - 400,
+		ver = 1
+	}
+}
+
+Interactions.CreateQuery("GetSavesData", { }, function(player: Player)
+	task.wait(0.1) -- Lag simulation
+	return true, dummySaves
 end)
