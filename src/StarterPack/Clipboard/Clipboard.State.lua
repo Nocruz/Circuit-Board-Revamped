@@ -68,9 +68,13 @@ function State:Save()
 		return
 	end
 	
-	local success, result = saveEvent:InvokeServer(saveName, self.gates)
-	if not success or result then
-		MessageService.SendMessage(result)
+	MessageService.SendColouredMessage("Saving...", Color3.new(1, 0.4, 0.2))
+	local success, message, result = saveEvent:InvokeServer(saveName, self.gates)
+	if not success then
+		MessageService.SendMessage(message)
+	else
+		MessageService.SendColouredMessage("Success!", Color3.new(0, 1, 0))
+		self.savesData[saveName] = result
 	end
 	return success
 end
@@ -98,7 +102,7 @@ function State:PopulateGUISaveSlots()
 		slot.Name = name .. "_slot"
 		slot.NameLabel.Text = name
 		slot.DataLabel.Text =
-			tostring(#data.gates) .. " Gates, " .. tostring(#data.connections) .. " Wires. Saved: " .. get24HrsString(data.timestamp)
+			tostring(#data.G) .. " Gates, " .. tostring(#data.C) .. " Wires. Saved: " .. get24HrsString(data.timestamp)
 		slot.Visible = true
 		slot.Parent = self.gui.Frame["2_SavesFrame"]["2_ScrollingFrame"]
 		
@@ -142,7 +146,12 @@ function State:BuildGui()
 	self:PopulateGUISaveSlots()
 	
 	self.guiConnections.SaveButton = (gui.Frame["4_SaveButton"]["1_SaveButton"] :: GuiButton).Activated:Connect(function()
-		self:Save()
+		local success = self:Save()
+		if not self.Equipped then return end
+		if success then
+			self:ClearGUISaveSlots()
+			self:PopulateGUISaveSlots()
+		end
 	end)
 	
 	self:UpdateGateCounter()
@@ -314,6 +323,7 @@ function State:Enter()
 end
 
 function State:Activated()
+	if not self.gui then return end
 	if not self.isDragging then
 		self:DestroyBoundingBox()
 		if not PointerService.HitPosition then return end
@@ -325,6 +335,7 @@ function State:Activated()
 end
 
 function State:Deactivated()
+	if not self.gui then return end
 	if self.isDragging then
 		self.isDragging = false
 	end

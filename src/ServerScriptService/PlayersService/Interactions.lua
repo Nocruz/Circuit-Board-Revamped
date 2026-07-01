@@ -59,48 +59,49 @@ local ParameterSolver: { [TParameter]: (... any) -> (boolean, string | any) } = 
 		return true, GridService.fromCFrame(cframe)._cframe
 	end,
 	
-	["string"] = function(string: string)
-		if not string or type(string) ~= "string" then
-			return false, "Invalid parameters! String was not a string"
+	["string"] = function(p_string: string)
+		if not p_string or type(p_string) ~= "string" then
+			return false, "Invalid parameters! string was not a string"
 		end
-		return true, string
+		return true, p_string
 	end,
 	
-	["AttributesTable"] = function(pTable: { any })
-		if not pTable or type(pTable) ~= "table" then
+	["AttributesTable"] = function(p_table: { any })
+		if not p_table or type(p_table) ~= "table" then
 			return false, "Invalid parameters! AttributesTable was not a table"
 		end
 		
-		for name, value in pairs(pTable) do
+		for name, value in pairs(p_table) do
 			if type(name) ~= "string" then
 				return false, "Invalid parameters! Check with a mod"
 			end
 		end
 		
-		return true, pTable
+		return true, p_table
 	end,
 	
 	["SaveIdentifier"] = function(iden: string)
-		if not string or type(string) ~= "string" then
-			return false, "Invalid parameters! String was not a string"
+		if not iden or type(iden) ~= "string" then
+			return false, "Invalid parameters! Identifier was not a string"
 		end
-		local match = string.match(iden, "^[%a_][%w _%-#]*$")
+		local match = iden.match(iden, "^[%a_][%w _%-#]*$")
 		if match ~= nil then
 			return true, iden
 		else
-			return false, "Invalid parameters! String was not a valid identifier"
+			return false, "Invalid parameters! iden was not a valid identifier"
 		end
 	end,
 	
-	["GateIDTable"] = function(pTable: { any })
-		if not pTable or type(pTable) ~= "table" then
+	["GateIDTable"] = function(p_table: { any })
+		if not p_table or type(p_table) ~= "table" then
 			return false, "Invalid parameters! AttributesTable was not a table"
 		end
 		
 		local seen = {}
 		local ret = {}
-		for id in pairs(pTable) do
-			if type(id) ~= "number" then
+		for idString in pairs(p_table) do
+			local id = tonumber(idString)
+			if id == nil then
 				return false, "Invalid parameters! Check with a mod"
 			end
 			local gate = GatesHandler.Get(id)

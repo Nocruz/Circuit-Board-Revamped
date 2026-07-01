@@ -32,6 +32,20 @@ function MessageService.SendMessage(text)
 	fadeIn:Play()
 end
 
+function MessageService.SendColouredMessage(text, color: Color3)
+	local label = labelPrefab:Clone()
+	label.Text = text
+	label.Parent = frame
+	label.TextColor3 = color
+	
+	local fadeIn  = TweenService:Create(label, tweenInfo, { TextTransparency = 0 })
+	local fadeOut = TweenService:Create(label, tweenInfo, { TextTransparency = 1 })
+	fadeIn.Completed:Connect(function() task.wait(duration); fadeOut:Play() end)
+	fadeOut.Completed:Connect(function() label:Destroy() end)
+	
+	fadeIn:Play()
+end
+
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
 
 return MessageService

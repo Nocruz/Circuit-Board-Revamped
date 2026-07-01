@@ -21,7 +21,22 @@ end
 
 local Saves = {}
 
-function Saves.Save(playerID: number, identifier: string, gates: { number } )
+-- Returns (success: boolean, error_message: string?, new_entry: table)
+function Saves.Save(playerID: number, identifier: string, gates: { number } ): (boolean, string?, { any }?)
+	simulate_lag()
+	
+	-- Compressed save style
+	local P = {}
+	local G = {}
+	local C = {}
+	
+	
+	local saveData = { P = P, G = G, C = C,
+		timestamp = os.time()
+	}
+	playerDatas[playerID] = playerDatas[playerID] or {}
+	playerDatas[playerID][identifier] = saveData
+	return true, nil, saveData
 end
 
 function Saves.GetAll(playerID: number)
