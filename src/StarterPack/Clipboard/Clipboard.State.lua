@@ -16,12 +16,10 @@ local LocalServices = StarterPlayerScripts.Services
 local PointerService = require(LocalServices.PointerService)
 local MessageService = require(LocalServices.MessageService)
 
-local GridService = require(ReplicatedStorage.GridService)
-
 -- Visuals
 local highlightPrefab: SelectionBox = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("ClipboardHighlight")
-local gui: ScreenGui & any = Players.LocalPlayer:WaitForChild("PlayerGui"):WaitForChild("ClipboardGui")
-local slotPrefab: Frame & any = gui.SaveSlotPrefab
+local guiPrefab: ScreenGui & any = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("ClipboardGui")
+local slotPrefab: Frame & any = guiPrefab.SaveSlotPrefab
 
 -- References
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
@@ -61,8 +59,10 @@ function State:Save()
 		return
 	end
 	
-	local saveName = gui.Frame["4_SaveButton"]["0_SaveName"].Text
-	local match = string.match(saveName, "^[%a_][%w _-#]*$")
+	local saveName = tostring(self.gui.Frame["4_SaveButton"]["0_SaveName"].Text)
+		:gsub("[%c]", "")
+		:gsub("^%s+", "")
+	local match = string.match(saveName, "^[%a_][%w _%-#]*$")
 	if #saveName < 1 or #saveName > 30 or match == nil then
 		MessageService.SendMessage("Save name should start with a letter, be under 30 characters and include only letters, numbers, spaces and some symbols")
 		return
@@ -100,7 +100,7 @@ function State:PopulateGUISaveSlots()
 		slot.DataLabel.Text =
 			tostring(#data.gates) .. " Gates, " .. tostring(#data.connections) .. " Wires. Saved: " .. get24HrsString(data.timestamp)
 		slot.Visible = true
-		slot.Parent = gui.Frame["2_SavesFrame"]["2_ScrollingFrame"]
+		slot.Parent = self.gui.Frame["2_SavesFrame"]["2_ScrollingFrame"]
 		
 		self.guiConnections.LoadButtons[name] = (slot.LoadButton :: TextButton).Activated:Connect(function()
 			self:LoadGhost()
@@ -122,18 +122,22 @@ function State:ClearGUISaveSlots()
 		connection = nil
 	end
 	
-	for _, child in ipairs(gui.Frame["2_SavesFrame"]["2_ScrollingFrame"]:GetChildren()) do
+	for _, child in ipairs(self.gui.Frame["2_SavesFrame"]["2_ScrollingFrame"]:GetChildren()) do
 		if not child:IsA("Frame") then continue end
 		child:Destroy()
 	end
 end
 
 function State:UpdateGateCounter()
-	gui.Frame["3_GateCount"].Label.Text = tostring(#self.highlights) .. " Circuits Selected" 
+	self.gui.Frame["3_GateCount"].Label.Text = tostring(#self.highlights) .. " Circuits Selected" 
 end
 
 function State:BuildGui()
-	gui.Enabled = true
+	local gui = guiPrefab:Clone() do
+		gui.Parent = playerGui
+		gui.Enabled = true
+	end
+	self.gui = gui
 	
 	self:PopulateGUISaveSlots()
 	
@@ -145,9 +149,11 @@ function State:BuildGui()
 end
 
 function State:DestroyGui()
-	gui.Enabled = false
-	
-	self:ClearGUISaveSlots()
+	if self.gui then
+		self:ClearGUISaveSlots()
+		self.gui:Destroy()
+		self.gui = nil
+	end
 	
 	if self.guiConnections.SaveButton then
 		self.guiConnections.SaveButton:Disconnect()
@@ -268,6 +274,8 @@ function State.new(player: Player, character: Model)
 	local self = setmetatable({}, State)
 	self.Player = player
 	
+	self.Equipped = false
+	
 	self.isDragging = false
 	
 	self.boundingBox = nil
@@ -278,6 +286,7 @@ function State.new(player: Player, character: Model)
 	self.highlights = {}
 	self.gates = {}
 	
+	self.gui = nil
 	self.guiConnections = {
 		SaveButton = nil,
 		LoadButtons = {},
@@ -290,6 +299,8 @@ function State.new(player: Player, character: Model)
 end
 
 function State:Enter()
+	self.Equipped = true
+	
 	local success, result = getSavesDataQuery:InvokeServer()
 	if not success then
 		warn("Failed to fetch server data for player " .. tostring(Players.LocalPlayer.UserId))
@@ -297,6 +308,7 @@ function State:Enter()
 	else
 		self.savesData = result
 	end
+	if not self.Equipped then return end
 	
 	self:BuildGui()
 end
@@ -322,6 +334,8 @@ function State:Exit()
 	self:DestroyGui()
 	self:DestroyBoundingBox()
 	self:DestroyHighlights()
+	
+	self.Equipped = false
 end
 
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
