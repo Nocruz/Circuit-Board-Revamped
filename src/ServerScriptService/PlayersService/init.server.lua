@@ -196,6 +196,7 @@ Interactions.CreateEvent("SetAttributes", { "GateID", "AttributesTable" }, funct
 	return true
 end)
 
+-- Clipboard events
 Interactions.CreateQuery("GetSavesData", { }, function(player: Player)
 	local data = Saves.GetAll(player.UserId)
 	
@@ -204,4 +205,32 @@ Interactions.CreateQuery("GetSavesData", { }, function(player: Player)
 	else
 		return false, "Error while obtaining the data!"
 	end
+end)
+
+Interactions.CreateEvent("Save", { "SaveIdentifier", "GateIDTable" }, function(player: Player, identifier: string, gates: { number })
+	local infoMessage = ""
+	
+	if #gates < 1 then
+		return false, "At least select 1 gate to save"
+	end
+	
+	local allowedGates = {}
+	for _, gate in ipairs(gates) do
+		if not Permissions.CanPlayerDo(player.UserId, gate.ID, "Move") then
+			infoMessage += "Lacks permissions to move a gate, so its skipped!"
+			continue
+		end
+		if not Permissions.CanPlayerDo(player.UserId, gate.ID, "Spawn", gate.Specification.Name) then
+			infoMessage += "Lacks permissions to spawn a gate, so its skipped!"
+			continue
+		end
+		table.insert(allowedGates, gate.ID)
+	end
+	
+	local success, message = Saves.Save(player.UserId, identifier, allowedGates)
+	if not success then
+		return false, message
+	end
+	
+	return true, infoMessage
 end)

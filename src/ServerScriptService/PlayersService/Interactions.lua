@@ -19,7 +19,7 @@ local queriesFolder = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Que
 
 -- ----------------------------- --------- PARAMETER RESOLUTION ---------- -----------------------------
 
-export type TParameter = "GateID" | "Action" | "CFrame" | "string" | "AttributesTable"
+export type TParameter = "GateID" | "Action" | "CFrame" | "string" | "AttributesTable" | "SaveIdentifier" | "GateIDTable"
 
 local ParameterSolver: { [TParameter]: (... any) -> (boolean, string | any) } = {
 	["GateID"] = function(gateID: number)
@@ -66,18 +66,55 @@ local ParameterSolver: { [TParameter]: (... any) -> (boolean, string | any) } = 
 		return true, string
 	end,
 	
-	["AttributesTable"] = function(table: { any })
-		if not table or type(table) ~= "table" then
+	["AttributesTable"] = function(pTable: { any })
+		if not pTable or type(pTable) ~= "table" then
 			return false, "Invalid parameters! AttributesTable was not a table"
 		end
 		
-		for name, value in pairs(table) do
+		for name, value in pairs(pTable) do
 			if type(name) ~= "string" then
 				return false, "Invalid parameters! Check with a mod"
 			end
 		end
 		
-		return true, table
+		return true, pTable
+	end,
+	
+	["SaveIdentifier"] = function(iden: string)
+		if not string or type(string) ~= "string" then
+			return false, "Invalid parameters! String was not a string"
+		end
+		local match = string.match(iden, "^[%a_][%w _%-#]*$")
+		if match ~= nil then
+			return true, iden
+		else
+			return false, "Invalid parameters! String was not a valid identifier"
+		end
+	end,
+	
+	["GateIDTable"] = function(pTable: { any })
+		if not pTable or type(pTable) ~= "table" then
+			return false, "Invalid parameters! AttributesTable was not a table"
+		end
+		
+		local seen = {}
+		local ret = {}
+		for id in pairs(pTable) do
+			if type(id) ~= "number" then
+				return false, "Invalid parameters! Check with a mod"
+			end
+			local gate = GatesHandler.Get(id)
+			if not gate then
+				return false, "Invalid gate ID " .. tostring(id) .. ", gate is not registered"
+			end
+			if seen[id] ~= nil then
+				return false, "Tried to save same gate twice!"
+			end
+			table.insert(ret, gate)
+			seen[id] = true
+		end
+		
+		return true, ret
 	end
 }
 
