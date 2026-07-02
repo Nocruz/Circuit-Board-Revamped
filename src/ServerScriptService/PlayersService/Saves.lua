@@ -6,15 +6,36 @@
 
 -- Requires and Services
 local ServerScriptService = game:GetService("ServerScriptService")
-local GateService = require(ServerScriptService.GateService)
+local GatesHandler = require(ServerScriptService.GateService.Handlers.GatesHandler)
+local Connections = require(ServerScriptService.GateService.Connections)
+local SpecificationsHandler = require(ServerScriptService.GateService.Handlers.SpecificationsHandler)
 
 -- Data
 local playerDatas = {}
+
+-- Constants
+local SAVE_VERSION = 1 -- Used if Specifications change names or whatever
 
 -- ----------------------------- ------------ HELPER METHODS ------------- -----------------------------
 
 local function simulate_lag()
 	task.wait(1)
+end
+
+type TVisuals = { MainMaterial: Enum.Material, DisplayName:  string, PrefabName:   string, MainColor:    Color3, OutputOffsets: { Vector2 }, InputOffsets:  { Vector2 } }
+local function areVisualsEqual(a: TVisuals, b: TVisuals): boolean
+	if a.MainMaterial ~= b.MainMaterial then return false end
+	if a.DisplayName  ~= b.DisplayName  then return false end
+	if a.PrefabName   ~= b.PrefabName   then return false end
+	if a.MainColor    ~= b.MainColor    then return false end
+	
+	if #a.OutputOffsets ~= #b.OutputOffsets then return false end
+	for i, offset in ipairs(a.OutputOffsets) do if offset ~= b.OutputOffsets[i] then return false end end
+	
+	if #a.InputOffsets ~= #b.InputOffsets then return false end
+	for i, offset in ipairs(a.InputOffsets)  do if offset ~= b.InputOffsets[i]  then return false end end
+	
+	return true
 end
 
 -- ----------------------------- ---------- MODULE DEFINITIONS ----------- -----------------------------
@@ -25,14 +46,67 @@ local Saves = {}
 function Saves.Save(playerID: number, identifier: string, gates: { number } ): (boolean, string?, { any }?)
 	simulate_lag()
 	
+	-- Maps for fast lookup
+	local savedGateIDs = {}
+	local oldToNewIDs = {}
+	
 	-- Compressed save style
 	local P = {}
 	local G = {}
 	local C = {}
 	
+	for i, gateID in ipairs(gates) do
+		local gate = GatesHandler.Get(gateID)
+		
+		-- (P)alette
+		local paletteID = nil
+		for id, palette in pairs(P) do
+			if areVisualsEqual(gate.Visuals, palette) then
+				paletteID = id
+				break
+			end
+		end
+		if paletteID == nil then
+			P[#P + 1] = gate.Visuals
+			paletteID = #P
+		end
+		
+		-- (G)ate 
+		local entry = {
+			ID = gate.ID,
+			Attributes = gate.Attributes,
+			Specification = gate.Specification.Name,
+			CFrame = gate.Model:GetPivot()
+		}
+		G[#G + 1] = entry
+		savedGateIDs[entry.ID] = true
+		oldToNewIDs[entry.ID] = #G
+	end
+	
+	-- (C)onnections
+	for newID, entry in pairs(G) do
+		local outConns = {}
+		
+		local specification = SpecificationsHandler.Get(entry.Specification)
+		for i, name in ipairs(specification.Nodes.Outputs) do
+			local allOuts = Connections.GetAllOutgoing(entry.ID, name)
+			for outGateID, nodes in pairs(allOuts) do
+				if G[oldToNewIDs[outGateID]] == nil then continue end
+				for node in pairs(nodes) do
+					outConns[oldToNewIDs[outGateID]] = outConns[oldToNewIDs[outGateID]] or {}
+					table.insert(outConns[oldToNewIDs[outGateID]], node)
+				end
+			end
+		end
+		
+		if next(outConns) ~= nil then
+			C[newID] = outConns
+		end
+	end
 	
 	local saveData = { P = P, G = G, C = C,
-		timestamp = os.time()
+		timestamp = os.time(),
+		version = SAVE_VERSION
 	}
 	playerDatas[playerID] = playerDatas[playerID] or {}
 	playerDatas[playerID][identifier] = saveData

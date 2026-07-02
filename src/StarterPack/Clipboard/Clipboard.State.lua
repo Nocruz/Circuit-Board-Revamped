@@ -43,6 +43,12 @@ local function toGridEdgePosition(position)
 	return Vector3.new(math.round(position.X - 1) + 1, math.round(position.Y), math.round(position.Z - 1) + 1)
 end
 
+local function getConnectionCount(c)
+	local count = 0
+	for _ in pairs(c) do count += 1 end
+	return count
+end
+
 -- ----------------------------- ----------- EVENTS HANDLING ------------- -----------------------------
 
 function State:ErasePrompt()
@@ -102,7 +108,7 @@ function State:PopulateGUISaveSlots()
 		slot.Name = name .. "_slot"
 		slot.NameLabel.Text = name
 		slot.DataLabel.Text =
-			tostring(#data.G) .. " Gates, " .. tostring(#data.C) .. " Wires. Saved: " .. get24HrsString(data.timestamp)
+			tostring(#data.G) .. " Gates, " .. tostring(getConnectionCount(data.C)) .. " Wires. Saved: " .. get24HrsString(data.timestamp)
 		slot.Visible = true
 		slot.Parent = self.gui.Frame["2_SavesFrame"]["2_ScrollingFrame"]
 		

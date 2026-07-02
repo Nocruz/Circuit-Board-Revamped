@@ -212,11 +212,11 @@ Interactions.CreateEvent("Save", { "SaveIdentifier", "GateIDTable" }, function(p
 	
 	local allowedGates = {}
 	for _, gate in ipairs(gates) do
-		if not Permissions.CanPlayerDo(player.UserId, gate.ID, "Move") then
+		if not Permissions.CanPlayerDo(player.UserId, gate.OwnerID, "Move") then
 			infoMessage = "Lacks permissions to move a gate, so its skipped!"
 			continue
 		end
-		if not Permissions.CanPlayerDo(player.UserId, gate.ID, "Spawn", gate.Specification.Name) then
+		if not Permissions.CanPlayerDo(player.UserId, gate.OwnerID, "Spawn", gate.Specification.Name) then
 			infoMessage = "Lacks permissions to spawn a gate, so its skipped!"
 			continue
 		end
