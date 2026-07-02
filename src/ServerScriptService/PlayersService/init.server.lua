@@ -210,10 +210,6 @@ end)
 Interactions.CreateEvent("Save", { "SaveIdentifier", "GateIDTable" }, function(player: Player, identifier: string, gates: { number })
 	local infoMessage = ""
 	
-	if #gates < 1 then
-		return false, "At least select 1 gate to save"
-	end
-	
 	local allowedGates = {}
 	for _, gate in ipairs(gates) do
 		if not Permissions.CanPlayerDo(player.UserId, gate.ID, "Move") then
@@ -225,6 +221,10 @@ Interactions.CreateEvent("Save", { "SaveIdentifier", "GateIDTable" }, function(p
 			continue
 		end
 		table.insert(allowedGates, gate.ID)
+	end
+	
+	if #allowedGates < 1 then
+		return false, "At least select 1 valid gate to save. Check permissions"
 	end
 	
 	local success, message, result = Saves.Save(player.UserId, identifier, allowedGates)
