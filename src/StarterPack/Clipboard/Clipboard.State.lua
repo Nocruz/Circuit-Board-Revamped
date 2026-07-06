@@ -24,6 +24,7 @@ local slotPrefab: Frame & any = guiPrefab.SaveSlotPrefab
 -- References
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 local gatesFolder = Workspace:WaitForChild("Gates")
+local ghostPrefab: Model = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("GhostPrefab")
 
 -- Gate detections
 local overlapParams = OverlapParams.new()
@@ -32,6 +33,7 @@ overlapParams.FilterType = Enum.RaycastFilterType.Include
 -- Events
 local getSavesDataQuery: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Queries"):WaitForChild("GetSavesData")
 local saveEvent: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("Save")
+local loadEvent: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("Load")
 
 -- State definition
 local State = {}
@@ -56,7 +58,31 @@ function State:ErasePrompt()
 end
 
 function State:LoadGhost()
-	error("Not implemented!")
+	local saveData = self.savesData[self.currentSave]
+	assert(saveData, "Save name does not match any entry!")
+	
+	local ghostModel = Instance.new("Model")
+	ghostModel.Name = "SaveGhost"
+	
+	local G = saveData.G
+	for id, data in ipairs(G) do
+		local ghost: Model = ghostPrefab:Clone()
+		ghost.Name = "Ghost"
+		ghost:PivotTo(data.CFrame._cframe)
+		
+		ghost.Parent = ghostModel
+	end
+	
+	if PointerService.HitPosition then
+		ghostModel.Parent = Workspace
+		ghostModel:PivotTo(CFrame.new(PointerService.HitPosition))
+	else
+		ghostModel.Parent = nil
+	end
+	
+	-- Mouse hover connection
+	
+	self.ghostModel = ghostModel
 end
 
 function State:Save()
@@ -113,7 +139,8 @@ function State:PopulateGUISaveSlots()
 		slot.Parent = self.gui.Frame["2_SavesFrame"]["2_ScrollingFrame"]
 		
 		self.guiConnections.LoadButtons[name] = (slot.LoadButton :: TextButton).Activated:Connect(function()
-			self:LoadGhost()
+			self.currentSave = name
+			self:LoadGhost(name)
 		end)
 		
 		self.guiConnections.EraseButtons[name] = (slot.EraseButton :: TextButton).Activated:Connect(function()
@@ -292,6 +319,7 @@ function State.new(player: Player, character: Model)
 	self.Equipped = false
 	
 	self.isDragging = false
+	self.isPointingGhost = false
 	
 	self.boundingBox = nil
 	self.boundingBoxStartPos = nil
@@ -309,6 +337,8 @@ function State.new(player: Player, character: Model)
 	}
 	
 	self.savesData = nil
+	
+	self.currentSave = nil
 	
 	return self
 end
@@ -330,13 +360,23 @@ end
 
 function State:Activated()
 	if not self.gui then return end
-	if not self.isDragging then
+	if not self.isDragging and not self.isPointingGhost then
 		self:DestroyBoundingBox()
 		if not PointerService.HitPosition then return end
 		
 		self:StartBoundingBox()
 		
 		self.isDragging = true
+	end
+	if self.isPointingGhost then
+		if not PointerService.HitPosition then return end
+		self:DestroyGhost()
+		
+		local success, message = loadEvent:InvokeServer(self.currentSave)
+		if not success then
+			MessageService.SendMessage(message)
+		end
+		self.currentSave = nil
 	end
 end
 

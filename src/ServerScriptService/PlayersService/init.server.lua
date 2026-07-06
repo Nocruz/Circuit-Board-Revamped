@@ -234,3 +234,8 @@ Interactions.CreateEvent("Save", { "SaveIdentifier", "GateIDTable" }, function(p
 	
 	return true, infoMessage, result
 end)
+
+Interactions.CreateEvent("Load", { "SaveIdentifier" }, function(player: Player, identifier: string)
+	warn("Not implemented!")
+	return true
+end)
