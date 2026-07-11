@@ -91,6 +91,7 @@ function State:DestroyErasePrompt()
 	
 	if self.erasePrompt then
 		self.erasePrompt.Visible = false
+		self.erasePrompt["4_Erase"]["0_SaveName"].Text = ""
 		self.erasePrompt = nil
 	end
 	
@@ -196,6 +197,29 @@ end
 
 -- ----------------------------- ------------- GUI METHODS --------------- -----------------------------
 
+function State:DestroyGui()
+	if self.gui then
+		self:ClearGUISaveSlots()
+		self.gui:Destroy()
+		self.gui = nil
+	end
+	
+	if self.guiConnections.SaveButton then
+		self.guiConnections.SaveButton:Disconnect()
+	end
+	if self.guiConnections.SearchBar then
+		self.guiConnections.SearchBar:Disconnect()
+	end
+	self.guiConnections = {
+		SaveButton = nil,
+		SearchBar  = nil,
+		LoadButtons = {},
+		EraseButtons = {},
+	}
+	
+	self.guiSearchText = nil
+end
+
 function State:PopulateGUISaveSlots()
 	local function get24HrsString(timestamp)
 		local d = os.date("*t", timestamp)
@@ -214,6 +238,7 @@ function State:PopulateGUISaveSlots()
 	
 	for name, data in pairs(self.savesData) do
 		local slot = slotPrefab:Clone()
+		if self.guiSearchText ~= nil and name:sub(1, #self.guiSearchText):lower() ~= self.guiSearchText:lower() then continue end
 		slot.Name = name .. "_slot"
 		slot.NameLabel.Text = name
 		slot.DataLabel.Text =
@@ -259,6 +284,7 @@ function State:BuildGui()
 	end
 	self.gui = gui
 	
+	self.guiSearchText = nil
 	self:PopulateGUISaveSlots()
 	
 	self.guiConnections.SaveButton = (gui.Frame["4_SaveButton"]["1_SaveButton"] :: GuiButton).Activated:Connect(function()
@@ -270,24 +296,14 @@ function State:BuildGui()
 		end
 	end)
 	
-	self:UpdateGateCounter()
-end
-
-function State:DestroyGui()
-	if self.gui then
+	local searchBar: TextBox = gui.Frame["2_SavesFrame"]["1_SearchBar"]
+	self.guiConnections.SearchBar = searchBar:GetPropertyChangedSignal("Text"):Connect(function()
+		self.guiSearchText = searchBar.Text
 		self:ClearGUISaveSlots()
-		self.gui:Destroy()
-		self.gui = nil
-	end
+		self:PopulateGUISaveSlots()
+	end)
 	
-	if self.guiConnections.SaveButton then
-		self.guiConnections.SaveButton:Disconnect()
-	end
-	self.guiConnections = {
-		SaveButton = nil,
-		LoadButtons = {},
-		EraseButtons = {},
-	}
+	self:UpdateGateCounter()
 end
 
 -- ----------------------------- --------- BOUNDING BOX METHODS ---------- -----------------------------
@@ -419,9 +435,11 @@ function State.new(player: Player, character: Model)
 	self.gui = nil
 	self.guiConnections = {
 		SaveButton = nil,
+		SearchBar  = nil,
 		LoadButtons = {},
 		EraseButtons = {},
 	}
+	self.guiSearchText = nil
 	
 	self.erasePrompt = nil
 	self.erasePromptConnection = nil
