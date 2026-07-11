@@ -239,3 +239,7 @@ Interactions.CreateEvent("Load", { "SaveIdentifier" }, function(player: Player, 
 	warn("Not implemented!")
 	return true
 end)
+
+Interactions.CreateEvent("EraseSave", { "SaveIdentifier" }, function(player: Player, identifier: string)
+	return Saves.Erase(player.UserId, identifier)
+end)

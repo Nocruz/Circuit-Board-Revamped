@@ -159,6 +159,16 @@ function Saves.Save(playerID: number, identifier: string, gates: { number } ): (
 	return true, nil, decompressSave(playerDatas[playerID][identifier])
 end
 
+function Saves.Erase(playerID: number, identifier: string): (boolean, string?)
+	local data = playerDatas[playerID]
+	if not data then return false, "Player has no saves" end
+	local save = data[identifier]
+	if not save then return false, "Player has no save " .. identifier end
+	
+	playerDatas[playerID][identifier] = nil
+	return true
+end
+
 function Saves.GetAll(playerID: number)
 	simulate_lag()
 	return playerDatas[playerID] or {}

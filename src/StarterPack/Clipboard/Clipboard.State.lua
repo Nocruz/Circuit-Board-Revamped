@@ -10,9 +10,11 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local StarterPlayerScripts = game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts")
 
 local LocalServices = StarterPlayerScripts.Services
+local GridService = require(ReplicatedStorage.GridService)
 local PointerService = require(LocalServices.PointerService)
 local MessageService = require(LocalServices.MessageService)
 
@@ -34,6 +36,7 @@ overlapParams.FilterType = Enum.RaycastFilterType.Include
 local getSavesDataQuery: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Queries"):WaitForChild("GetSavesData")
 local saveEvent: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("Save")
 local loadEvent: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("Load")
+local eraseEvent: RemoteFunction= ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("EraseSave")
 
 -- State definition
 local State = {}
@@ -51,41 +54,7 @@ local function getConnectionCount(c)
 	return count
 end
 
--- ----------------------------- ----------- EVENTS HANDLING ------------- -----------------------------
-
-function State:ErasePrompt()
-	error("Not implemented!")
-end
-
-function State:LoadGhost()
-	local saveData = self.savesData[self.currentSave]
-	assert(saveData, "Save name does not match any entry!")
-	
-	local ghostModel = Instance.new("Model")
-	ghostModel.Name = "SaveGhost"
-	
-	local G = saveData.G
-	for id, data in ipairs(G) do
-		local ghost: Model = ghostPrefab:Clone()
-		ghost.Name = "Ghost"
-		ghost:PivotTo(data.CFrame._cframe)
-		
-		ghost.Parent = ghostModel
-	end
-	
-	ghostModel.WorldPivot = CFrame.new()
-	
-	if PointerService.HitPosition then
-		ghostModel.Parent = Workspace
-		ghostModel:PivotTo(CFrame.new(PointerService.HitPosition))
-	else
-		ghostModel.Parent = nil
-	end
-	
-	-- Mouse hover connection
-	
-	self.ghostModel = ghostModel
-end
+-- ----------------------------- ------------- SAVE BUTTON --------------- -----------------------------
 
 function State:Save()
 	if #self.highlights <= 0 then
@@ -111,6 +80,118 @@ function State:Save()
 		self.savesData[saveName] = result
 	end
 	return success
+end
+
+-- ----------------------------- ----------- ERASE SAFEGUARD ------------- -----------------------------
+
+function State:DestroyErasePrompt()
+	if self.gui then
+		self.gui.Frame.Interactable = true
+	end
+	
+	if self.erasePrompt then
+		self.erasePrompt.Visible = false
+		self.erasePrompt = nil
+	end
+	
+	if self.erasePromptConnection then
+		self.erasePromptConnection:Disconnect()
+		self.erasePromptConnection = nil
+	end
+end
+
+function State:CreateErasePrompt(saveIdentifier: string)
+	self.erasePrompt = self.gui.ErasePrompt
+	self.erasePrompt.Visible = true
+	self.gui.Frame.Interactable = false
+	
+	local frame = self.erasePrompt["4_Erase"]
+	self.erasePromptConnection = (frame["1_EraseButton"] :: TextButton).Activated:Connect(function()
+		local textInput = frame["0_SaveName"]
+		if textInput.Text ~= saveIdentifier then
+			MessageService.SendMessage("Wrong Save Name! Be sure of what you want to delete. Re-equip the tool, or try again with the name.")
+		else
+			local success, message = eraseEvent:InvokeServer(saveIdentifier)
+			if not success then
+				MessageService.SendMessage(message)
+			else
+				MessageService.SendColouredMessage("Save erased!", Color3.new(0, 1, 0))
+				self.savesData[saveIdentifier] = nil
+				self:ClearGUISaveSlots()
+				self:PopulateGUISaveSlots()
+			end
+			self:DestroyErasePrompt()
+		end
+	end)
+end
+
+-- ----------------------------- ------------- GHOST STUFF --------------- -----------------------------
+
+function State:DestroyGhost()
+	self.isPointingGhost = false
+	
+	if self.ghostModel then
+		self.ghostModel:Destroy()
+		self.ghostModel = nil
+	end
+	
+	if self.ghostMouseConnection then
+		self.ghostMouseConnection:Disconnect()
+		self.ghostMouseConnection = nil
+	end
+	
+	if self.ghostRotationConnection then
+		self.ghostRotationConnection:Disconnect()
+		self.ghostRotationConnection = nil
+	end
+	
+	if self.gui then
+		self.gui.Frame.Interactable = true
+	end
+end
+
+function State:LoadGhost()
+	local saveData = self.savesData[self.currentSave]
+	assert(saveData, "Save name does not match any entry!")
+	
+	local ghostModel = Instance.new("Model")
+	ghostModel.Name = "SaveGhost"
+	
+	local G = saveData.G
+	for id, data in ipairs(G) do
+		local ghost: Model = ghostPrefab:Clone()
+		ghost.Name = "Ghost"
+		ghost:PivotTo(data.CFrame._cframe)
+		
+		ghost.Parent = ghostModel
+	end
+	
+	ghostModel.WorldPivot = CFrame.new()
+	
+	if PointerService.HitPosition then
+		ghostModel.Parent = Workspace
+		ghostModel:PivotTo(GridService.fromCFrame(CFrame.new(PointerService.HitPosition))._cframe)
+	else
+		ghostModel.Parent = nil
+	end
+	
+	self.ghostMouseConnection = RunService.RenderStepped:Connect(function()
+		if PointerService.HitPosition then
+			ghostModel.Parent = Workspace
+			ghostModel:PivotTo(GridService.fromCFrame(CFrame.new(PointerService.HitPosition))._cframe)
+		else
+			ghostModel.Parent = nil
+		end
+	end)
+	self.ghostRotationConnection = UserInputService.InputBegan:Connect(function(input, gp)
+		if gp then return end
+		if input.KeyCode == Enum.KeyCode.R then ghostModel.WorldPivot *= CFrame.Angles(0, math.rad(-90), 0) end
+	end)
+	
+	self.ghostModel = ghostModel
+	self.isPointingGhost = true
+	
+	self.gui.Frame.Interactable = false
 end
 
 -- ----------------------------- ------------- GUI METHODS --------------- -----------------------------
@@ -146,7 +227,7 @@ function State:PopulateGUISaveSlots()
 		end)
 		
 		self.guiConnections.EraseButtons[name] = (slot.EraseButton :: TextButton).Activated:Connect(function()
-			self:ErasePrompt(name)
+			self:CreateErasePrompt(name)
 		end)
 	end
 end
@@ -323,6 +404,10 @@ function State.new(player: Player, character: Model)
 	self.isDragging = false
 	self.isPointingGhost = false
 	
+	self.ghostModel = nil
+	self.ghostMouseConnection = nil
+	self.ghostRotationConnection = nil
+	
 	self.boundingBox = nil
 	self.boundingBoxStartPos = nil
 	self.boundingBoxEndPos = nil
@@ -337,6 +422,9 @@ function State.new(player: Player, character: Model)
 		LoadButtons = {},
 		EraseButtons = {},
 	}
+	
+	self.erasePrompt = nil
+	self.erasePromptConnection = nil
 	
 	self.savesData = nil
 	
@@ -391,8 +479,10 @@ end
 
 function State:Exit()
 	self:DestroyGui()
+	self:DestroyErasePrompt()
 	self:DestroyBoundingBox()
 	self:DestroyHighlights()
+	self:DestroyGhost()
 	
 	self.Equipped = false
 end
