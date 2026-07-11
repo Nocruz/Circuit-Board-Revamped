@@ -82,6 +82,8 @@ function Models.GetSpecificationVisualsTable(table, name, inputCount, outputCoun
 		data.DisplayName = table.DisplayName or name
 		data.PrefabName = table.PrefabName or visualDefaultConfigurations.PrefabName
 		data.MainColor = table.MainColor or visualDefaultConfigurations.MainColor
+		data.InputOffsets = table.InputOffsets or nil
+		data.OutputOffsets = table.OutputOffsets or nil
 	end
 	
 	return setmetatable(data, { __index = function(table, key)
