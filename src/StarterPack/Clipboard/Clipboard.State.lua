@@ -102,6 +102,8 @@ function State:DestroyErasePrompt()
 end
 
 function State:CreateErasePrompt(saveIdentifier: string)
+	self:DestroyBoundingBox()
+	
 	self.erasePrompt = self.gui.ErasePrompt
 	self.erasePrompt.Visible = true
 	self.gui.Frame.Interactable = false
@@ -152,6 +154,7 @@ function State:DestroyGhost()
 end
 
 function State:LoadGhost()
+	self:DestroyBoundingBox()
 	local saveData = self.savesData[self.currentSave]
 	assert(saveData, "Save name does not match any entry!")
 	
@@ -293,6 +296,7 @@ function State:BuildGui()
 		if success then
 			self:ClearGUISaveSlots()
 			self:PopulateGUISaveSlots()
+			self:DestroyBoundingBox()
 		end
 	end)
 	
@@ -354,6 +358,7 @@ function State:StartBoundingBox()
 end
 
 function State:DestroyBoundingBox()
+	self:DestroyHighlights()
 	if self.boundingBox then
 		self.boundingBox:Destroy()
 		self.boundingBox = nil
@@ -480,7 +485,8 @@ function State:Activated()
 		if not PointerService.HitPosition then return end
 		self:DestroyGhost()
 		
-		local success, message = loadEvent:InvokeServer(self.currentSave)
+		local saveCFrame = GridService.fromCFrame(CFrame.new(PointerService.HitPosition))._cframe	
+		local success, message = loadEvent:InvokeServer(self.currentSave, saveCFrame)
 		if not success then
 			MessageService.SendMessage(message)
 		end
