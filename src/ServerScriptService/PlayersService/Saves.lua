@@ -51,24 +51,26 @@ local function compressSave(save)
 	-- Do the CFrame magic
 	local count = #save.G
 	if count > 0 then
-		-- Find centre
-		local centre = Vector3.zero
-		for _, gate in ipairs(save.G) do centre += gate.CFrame.Position end
-		centre /= count
+		local firstPos = save.G[1].CFrame.Position
+		local minX, maxX = firstPos.X, firstPos.X
+		local minY, maxY = firstPos.Y, firstPos.Y
+		local minZ, maxZ = firstPos.Z, firstPos.Z
 		
-		-- Find gate closest to centre
-		local min, closest = (save.G[1].CFrame.Position - centre).Magnitude, save.G[1].CFrame
 		for id = 2, count do
-			local distance = (save.G[id].CFrame.Position - centre).Magnitude
-			if distance < min then
-				min = distance
-				closest = CFrame.new(save.G[id].CFrame)
-			end
+			local pos = save.G[id].CFrame.Position
+			if pos.X < minX then minX = pos.X elseif pos.X > maxX then maxX = pos.X end
+			if pos.Y < minY then minY = pos.Y elseif pos.Y > maxY then maxY = pos.Y end
+			if pos.Z < minZ then minZ = pos.Z elseif pos.Z > maxZ then maxZ = pos.Z end
 		end
 		
-		-- Update all CFrames to be offsets
+		local halfX = (minX + maxX) / 2
+		local halfZ = (minZ + maxZ) / 2
+		local pivotPosition = Vector3.new(halfX, minY, halfZ)
+		
+		local originCFrame = CFrame.new(pivotPosition)
+		
 		for id, gate in ipairs(save.G) do
-			gate.CFrame = GridService.fromCFrame(closest:ToObjectSpace(gate.CFrame))
+			gate.CFrame = GridService.fromCFrame(originCFrame:toObjectSpace(gate.CFrame))
 		end
 	end
 	

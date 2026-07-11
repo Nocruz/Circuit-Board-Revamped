@@ -73,6 +73,8 @@ function State:LoadGhost()
 		ghost.Parent = ghostModel
 	end
 	
+	ghostModel.WorldPivot = CFrame.new()
+	
 	if PointerService.HitPosition then
 		ghostModel.Parent = Workspace
 		ghostModel:PivotTo(CFrame.new(PointerService.HitPosition))
