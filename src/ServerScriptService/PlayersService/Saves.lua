@@ -67,10 +67,10 @@ local function compressSave(save)
 		local halfZ = (minZ + maxZ) / 2
 		local pivotPosition = Vector3.new(halfX, minY, halfZ)
 		
-		local originCFrame = CFrame.new(pivotPosition)
+		local originCFrame = GridService.fromCFrame(CFrame.new(pivotPosition))
 		
 		for id, gate in ipairs(save.G) do
-			gate.CFrame = GridService.fromCFrame(originCFrame:toObjectSpace(gate.CFrame))
+			gate.CFrame = GridService.fromCFrame(originCFrame._cframe:toObjectSpace(gate.CFrame))
 		end
 	end
 	
