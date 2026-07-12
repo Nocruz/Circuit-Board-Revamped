@@ -40,7 +40,7 @@ local function isWire(instance: Instance?): (boolean, Beam?)
 end
 
 function State:ResetHighlight()
-	if self.SelectedGate then
+	if self.SelectedGate and self.SelectedGateHighlight then
 		self.SelectedGateHighlight.Adornee = nil
 		self.SelectedGateHighlight.Parent = nil
 		self.SelectedGate = nil
@@ -48,13 +48,15 @@ function State:ResetHighlight()
 end
 
 function State:SetHighlight(gate: Instance)
+	if not self.IsEquipped or not gate or not gate.Parent then return end
+	
 	self.SelectedGate = gate
 	self.SelectedGateHighlight.Adornee = gate
 	self.SelectedGateHighlight.Parent = gate
 end
 
 function State:ResetWire()
-	if self.SelectedWire then
+	if self.SelectedWire and self.SelectedWire.Parent and self.SelectedWireColor then
 		self.SelectedWire.Color = self.SelectedWireColor
 		self.SelectedWireColor = nil
 		self.SelectedWire = nil
@@ -62,12 +64,16 @@ function State:ResetWire()
 end
 
 function State:SelectWire(wire: Beam)
+	if not self.IsEquipped or not wire or not wire.Parent then return end
+	
 	self.SelectedWire = wire
 	self.SelectedWireColor = wire.Color
 	self.SelectedWire.Color = COLOR_SELECTED
 end
 
 function State:UpdateHighlights(instance: Instance?, gate: Model?)
+	if not self.IsEquipped then return end
+	
 	local validWire, wireInstance = isWire(instance)
 	
 	if validWire and wireInstance then
@@ -81,7 +87,7 @@ function State:UpdateHighlights(instance: Instance?, gate: Model?)
 		self:ResetWire()
 	end
 	
-	if not gate then
+	if not gate or not gate.Parent then
 		self:ResetHighlight()
 	elseif self.SelectedGate ~= gate then
 		self:ResetHighlight()
@@ -91,7 +97,7 @@ end
 
 -- ----------------------------- --------- STATE IMPLEMENTATION ---------- -----------------------------
 
-function State.new(player: Player, character: Model)
+function State.new(player: Player)
 	local self = setmetatable({}, State)
 	self.Player = player
 	
@@ -99,9 +105,11 @@ function State.new(player: Player, character: Model)
 	
 	self.SelectedWire = nil
 	self.SelectedWireColor = nil
-
+	
 	self.SelectedGate = nil
 	self.SelectedGateHighlight = nil
+	
+	self.IsEquipped = true
 	
 	return self
 end
@@ -112,27 +120,37 @@ function State:Enter()
 	self.HoverConnection = PointerService.OnHoverChanged:Connect(function(instance, gate)
 		self:UpdateHighlights(instance, gate)
 	end)
-	self:UpdateHighlights(PointerService.HoveredInstance, PointerService.HoveredGate)
 	
+	self:UpdateHighlights(PointerService.HoveredInstance, PointerService.HoveredGate)
 	PointerService.RemoveFromFilter(wiresFolder)
 end
 
 function State:Activated()
-	if self.SelectedWire then
+	if not self.IsEquipped then return end
+	
+	if self.SelectedWire and self.SelectedWire.Parent then
 		local fromGate = self.SelectedWire:GetAttribute("FromGate")
 		local fromNode = self.SelectedWire:GetAttribute("FromNode")
 		local toGate = self.SelectedWire:GetAttribute("ToGate")
 		local toNode = self.SelectedWire:GetAttribute("ToNode")
 		
+		if not fromGate or not toGate then return end
+		
 		local success, message = disconnectSingleEvent:InvokeServer(fromGate, toGate, fromNode, toNode)
+		if not self.IsEquipped then return end
+		
 		if not success then
 			MessageService.SendMessage(message)
 			return
 		end
 	
-	elseif self.SelectedGate then
+	elseif self.SelectedGate and self.SelectedGate.Parent then
 		local gateID = self.SelectedGate:GetAttribute("GateID")
+		if not gateID then return end
+		
 		local success, message = disconnectAllOutgoingEvent:InvokeServer(gateID)
+		if not self.IsEquipped then return end
+		
 		if not success then
 			MessageService.SendMessage(message)
 			return
@@ -144,6 +162,9 @@ function State:Deactivated()
 end
 
 function State:Exit()
+	if not self.IsEquipped then return end
+	self.IsEquipped = false
+	
 	self:ResetHighlight()
 	self:ResetWire()
 	
@@ -151,8 +172,14 @@ function State:Exit()
 		self.HoverConnection:Disconnect()
 		self.HoverConnection = nil
 	end
+
+	if self.SelectedGateHighlight then
+		self.SelectedGateHighlight:Destroy()
+		self.SelectedGateHighlight = nil
+	end
 	
 	PointerService.AddToFilter(wiresFolder)
+	table.clear(self)
 end
 
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
