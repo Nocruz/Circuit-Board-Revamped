@@ -43,7 +43,7 @@ return {
 			self.InternalState.LastInput = current
 			self.InternalState.PulseActive = true
 			self.Nodes.Signals["Output"] = true
-			Updates.ScheduleWakeup(self.Id, 0, { Source = "ResetPulse" }, "ResetPulse")
+			Updates.ScheduleWakeup(self.ID, 0, { Source = "ResetPulse" }, "ResetPulse")
 			return
 		end
 		

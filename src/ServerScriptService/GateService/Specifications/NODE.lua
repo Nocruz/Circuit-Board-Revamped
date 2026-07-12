@@ -21,8 +21,8 @@ return {
 			if self.Attributes.Delay == 0 then
 				self.Nodes.Signals["Output"] = inputSignal.Raw
 			else
-				if not Updates.IsWakeupScheduled(self.Id, "DelayTimer") then
-					Updates.ScheduleWakeup(self.Id, self.Attributes.Delay, { Source = "DelayExpired" }, "DelayTimer")
+				if not Updates.IsWakeupScheduled(self.ID, "DelayTimer") then
+					Updates.ScheduleWakeup(self.ID, self.Attributes.Delay, { Source = "DelayExpired" }, "DelayTimer")
 				end
 			end
 		  
@@ -32,7 +32,7 @@ return {
 		  
 		-- Input turned false: cancel timers and output false immediately
 		elseif not inputBool then
-			Updates.CancelAllWakeups(self.Id)
+			Updates.CancelAllWakeups(self.ID)
 			self.Nodes.Signals["Output"] = inputSignal.Raw
 		end
 		

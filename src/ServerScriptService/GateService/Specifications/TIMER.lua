@@ -21,9 +21,9 @@ return {
 			}
 			
 			if self.InternalState.Phase == "WAITING_DELAY" then
-				Updates.ScheduleWakeup(self.Id, self.Attributes.Delay, { Source = "DelayExpired" }, "DelayTimer")
+				Updates.ScheduleWakeup(self.ID, self.Attributes.Delay, { Source = "DelayExpired" }, "DelayTimer")
 			elseif self.InternalState.Phase == "PULSING" then
-				Updates.ScheduleWakeup(self.Id, self.Attributes.Duration, { Source = "DurationExpired" }, "DurationTimer")
+				Updates.ScheduleWakeup(self.ID, self.Attributes.Duration, { Source = "DurationExpired" }, "DurationTimer")
 			end
 			
 		else
@@ -42,8 +42,8 @@ return {
 		if payload and payload.Source == "DelayExpired" then
 			self.Nodes.Signals["Output"] = true
 			state.Phase = "PULSING"
-			if not Updates.IsWakeupScheduled(self.Id, "DurationTimer") then
-				Updates.ScheduleWakeup(self.Id, self.Attributes.Duration, { Source = "DurationExpired" }, "DurationTimer")
+			if not Updates.IsWakeupScheduled(self.ID, "DurationTimer") then
+				Updates.ScheduleWakeup(self.ID, self.Attributes.Duration, { Source = "DurationExpired" }, "DurationTimer")
 			end
 		elseif payload and payload.Source == "DurationExpired" then
 			self.Nodes.Signals["Output"] = false
@@ -55,20 +55,20 @@ return {
 				if self.Attributes.Delay == 0 then
 					self.Nodes.Signals["Output"] = inputSignal.Raw
 					state.Phase = "PULSING"
-					if not Updates.IsWakeupScheduled(self.Id, "DurationTimer") then
-						Updates.ScheduleWakeup(self.Id, self.Attributes.Duration, { Source = "DurationExpired" }, "DurationTimer")
+					if not Updates.IsWakeupScheduled(self.ID, "DurationTimer") then
+						Updates.ScheduleWakeup(self.ID, self.Attributes.Duration, { Source = "DurationExpired" }, "DurationTimer")
 					end
 				else
 					state.Phase = "WAITING_DELAY"
-					if not Updates.IsWakeupScheduled(self.Id, "DelayTimer") then
-						Updates.ScheduleWakeup(self.Id, self.Attributes.Delay, { Source = "DelayExpired" }, "DelayTimer")
+					if not Updates.IsWakeupScheduled(self.ID, "DelayTimer") then
+						Updates.ScheduleWakeup(self.ID, self.Attributes.Delay, { Source = "DelayExpired" }, "DelayTimer")
 					end
 				end
 			end
 		-- Cancel the delayed turn-on if the input drops before the delay expires.
 		elseif not inputBool and (state.Phase == "WAITING_DELAY" or state.Phase == "COOLDOWN") then
-			if Updates.IsWakeupScheduled(self.Id, "DelayTimer") then
-				Updates.CancelWakeup(self.Id, "DelayTimer")
+			if Updates.IsWakeupScheduled(self.ID, "DelayTimer") then
+				Updates.CancelWakeup(self.ID, "DelayTimer")
 			end
 			self.Nodes.Signals["Output"] = false
 			state.Phase = "IDLE"

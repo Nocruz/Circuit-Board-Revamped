@@ -82,7 +82,7 @@ function State:Save()
 	local saveName = tostring(saveNameInput.Text)
 		:gsub("[%c]", "")
 		:gsub("^%s+", "")
-	local match = string.match(saveName, "^[%a_][%w _%-#]*$")
+	local match = string.match(saveName, "^[%a_][%w _%-#()]*$")
 	if #saveName < 1 or #saveName > 30 or match == nil then
 		MessageService.SendMessage("Save name should start with a letter, be under 30 characters and include only letters, numbers, spaces and some symbols")
 		return

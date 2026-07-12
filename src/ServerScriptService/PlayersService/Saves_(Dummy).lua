@@ -1,10 +1,10 @@
---[[ SAVES
-		Handles datastorage stuff.
-		I'm too tired to make a description. You know what this does
+--[[ SAVES (DUMMY)
+		Stores player saves locally in the server, simulating the actual datastore.
+		
+		Used for testing.
 ]]
 
 -- Requires and Services
-local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local Safezones = require(script.Parent.Safezones)
@@ -15,8 +15,8 @@ local SpecificationsHandler = require(ServerScriptService.GateService.Handlers.S
 
 local GridService = require(ReplicatedStorage.GridService)
 
--- Database
-local SaveDataStore = DataStoreService:GetDataStore("SAVE_BETA_2")
+-- Data
+local playerDatas = {}
 
 -- Constants
 local SAVE_VERSION = 2 -- Used if Specifications change names or whatever
@@ -24,6 +24,10 @@ local ROT_TO_INT = { PosX = 0, PosZ = 1, NegX = 2, NegZ = 3 }
 local INT_TO_ROT = { [0] = "PosX", [1] = "PosZ", [2] = "NegX", [3] = "NegZ" }
 
 -- ----------------------------- ------------ HELPER METHODS ------------- -----------------------------
+
+local function simulate_lag()
+	task.wait(1)
+end
 
 local function deepCopy(t)
 	if type(t) ~= "table" then return t end
@@ -77,7 +81,7 @@ local function compressSave(save)
 		local originCFrame = GridService.fromCFrame(CFrame.new(pivotPosition))
 		
 		for id, gate in ipairs(save.G) do
-			local relativeCFrame = originCFrame._cframe:toObjectSpace(gate.CFrame)
+			local relativeCFrame = originCFrame._cframe:ToObjectSpace(gate.CFrame)
 			local gridStructure = GridService.fromCFrame(relativeCFrame)
 			
 			gate.CFrame = {
@@ -120,13 +124,8 @@ end
 local Saves = {}
 
 function Saves.Load(playerID: number, identifier: string, loadCFrame: CFrame): (boolean, string?)
-	local playerKey = tostring(playerID)
-	
-	local success, playerSaves = pcall(SaveDataStore.GetAsync, SaveDataStore, playerKey)
-	if not success then return false, "DataStore fetch failed! Try again shortly." end
-	if not playerSaves or next(playerSaves) == nil then return false, "Player has no saves!" end
-	
-	local masterSaveData = playerSaves[identifier]
+	if not playerDatas[playerID] then return false, "Player has no saves!" end
+	local masterSaveData = playerDatas[playerID][identifier]
 	if not masterSaveData then return false, "Player has no such save!" end
 	
 	local saveData = decompressSave(deepCopy(masterSaveData))
@@ -144,9 +143,10 @@ end
 
 -- Returns (success: boolean, error_message: string?, new_entry: table)
 function Saves.Save(playerID: number, identifier: string, gates: { number } ): (boolean, string?, { any }?)
-	local playerKey = tostring(playerID)
+	simulate_lag()
 	
 	-- Maps for fast lookup
+	local savedGateIDs = {}
 	local oldToNewIDs = {}
 	
 	-- Compressed save style
@@ -156,10 +156,21 @@ function Saves.Save(playerID: number, identifier: string, gates: { number } ): (
 	
 	for i, gateID in ipairs(gates) do
 		local gate = GatesHandler.Get(gateID)
-		if not gate then continue end
 		
 		-- (P)alette
-		-- Not implemented
+		local paletteID = nil
+		if next(gate.Visuals) ~= nil then
+			for id, palette in pairs(P) do
+				if areVisualsEqual(gate.Visuals, palette) then
+					paletteID = id
+					break
+				end
+			end
+			if paletteID == nil then
+				P[#P + 1] = gate.Visuals
+				paletteID = #P
+			end
+		end
 		
 		-- (G)ate 
 		local entry = {
@@ -173,6 +184,7 @@ function Saves.Save(playerID: number, identifier: string, gates: { number } ): (
 			}
 		}
 		G[#G + 1] = entry
+		savedGateIDs[entry.ID] = true
 		oldToNewIDs[entry.ID] = #G
 	end
 	
@@ -201,52 +213,30 @@ function Saves.Save(playerID: number, identifier: string, gates: { number } ): (
 		end
 	end
 	
-	local workingSaveData = { P = P, G = G, C = C,
+	local saveData = { P = P, G = G, C = C,
 		timestamp = os.time(),
 		version = SAVE_VERSION
 	}
-	local finalCompressedSnapshot = compressSave(workingSaveData)
-	local success, result = pcall(function()
-		SaveDataStore:UpdateAsync(playerKey, function(oldSavesMap)
-			local currentMap = oldSavesMap or {}
-			currentMap[identifier] = finalCompressedSnapshot
-			return currentMap
-		end)
-	end)
-	
-	if not success then return false, "Database transaction failed to save: " .. tostring(result) end
-	return true, nil, decompressSave(finalCompressedSnapshot)
+	playerDatas[playerID] = playerDatas[playerID] or {}
+	playerDatas[playerID][identifier] = compressSave(saveData)
+	return true, nil, decompressSave(playerDatas[playerID][identifier])
 end
 
 function Saves.Erase(playerID: number, identifier: string): (boolean, string?)
-	local playerKey = tostring(playerID)
-	local itemExisted = false
+	local data = playerDatas[playerID]
+	if not data then return false, "Player has no saves" end
+	local save = data[identifier]
+	if not save then return false, "Player has no save " .. identifier end
 	
-	local success, result = pcall(function()
-		SaveDataStore:UpdateAsync(playerKey, function(oldSavesMap)
-			if not oldSavesMap or not oldSavesMap[identifier] then return nil end
-
-			itemExisted = true
-			oldSavesMap[identifier] = nil
-			return oldSavesMap
-		end)
-	end)
-	
-	if not success then return false, "Erase transaction aborted: " .. tostring(result) end
-	if not itemExisted then return false, "Target layout profile does not exist" end
-	
+	playerDatas[playerID][identifier] = nil
 	return true
 end
 
 function Saves.GetAll(playerID: number)
-	local playerKey = tostring(playerID)
-	
-	local success, playerSaves = pcall(function() return SaveDataStore:GetAsync(playerKey) end)
-	if not success or not playerSaves then return {} end
-	
-	local decompressedSaves = {}
-	for name, data in pairs(playerSaves) do decompressedSaves[name] = decompressSave(data) end
-	return decompressedSaves
+	simulate_lag()
+	local saves = {}
+	for name, data in pairs(playerDatas[playerID] or {}) do saves[name] = decompressSave(data) end
+	return saves
 end
 
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
