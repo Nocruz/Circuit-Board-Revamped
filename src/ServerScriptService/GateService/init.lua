@@ -239,22 +239,38 @@ function GateService.Disconnect(fromGateID: number, toGateID: number, fromNode: 
 end
 
 function GateService.Load(playerID: number, saveData, loadCFrame: CFrame): (boolean, string?)
+	local function deepCopy(t)
+		if type(t) ~= "table" then return t end
+		local copy = {}
+		for k, v in pairs(t) do copy[deepCopy(k)] = deepCopy(v) end
+		return setmetatable(copy, getmetatable(t))
+	end
+	
 	-- Instantiate
 	local offsetIDToRealIDs = {} 
 	for offsetID, data in ipairs(saveData.G) do
-		local realID = instantiateGate(playerID, data.Specification, loadCFrame:toWorldSpace(data.CFrame._cframe), {}, data.Attributes, data.State)
+		local realID = instantiateGate(playerID, data.Specification, loadCFrame:toWorldSpace(data.CFrame._cframe), {}, deepCopy(data.Attributes), deepCopy(data.State))
 		offsetIDToRealIDs[offsetID] = realID
 	end
 	
 	-- Connect
 	for offsetID, outConnections in pairs(saveData.C) do
-		local from = GatesHandler.Get(offsetIDToRealIDs[offsetID])
+		local originalFromIndex = tonumber(offsetID)
+		local fromID = offsetIDToRealIDs[originalFromIndex]
+		
+		local from = GatesHandler.Get(fromID)
+		if not from then continue end
+		
 		for outputName, inGates in pairs(outConnections) do
-			for inGateID, nodes in pairs(inGates) do
-				inGateID = tonumber(inGateID) -- Blame Roblox's dumb serialization for this
-				local to = GatesHandler.Get(offsetIDToRealIDs[inGateID])
+			for savedToIDStr, nodes in pairs(inGates) do
+				local originalToIndex = tonumber(savedToIDStr)
+				local targetLiveID = offsetIDToRealIDs[originalToIndex]
+				
+				local to = GatesHandler.Get(targetLiveID)
+				if not to then continue end
+				
 				for _, inputName in ipairs(nodes) do
-					local wire = Connections.new(offsetIDToRealIDs[offsetID], offsetIDToRealIDs[inGateID], from.Model.Nodes.Outputs[outputName], to.Model.Nodes.Inputs[inputName])
+					local wire = Connections.new(fromID, targetLiveID, from.Model.Nodes.Outputs[outputName], to.Model.Nodes.Inputs[inputName])
 					Updates.RegisterVisualChange(wire, { Color = ColorSequence.new(if Signals.toBoolean(from.Nodes.Signals[outputName]) then Color3.new(0.9, 0.9, 1) else Color3.new(0, 0, 0.1)) })
 				end
 			end

@@ -19,7 +19,9 @@ local GridService = require(ReplicatedStorage.GridService)
 local playerDatas = {}
 
 -- Constants
-local SAVE_VERSION = 1 -- Used if Specifications change names or whatever
+local SAVE_VERSION = 2 -- Used if Specifications change names or whatever
+local ROT_TO_INT = { PosX = 0, PosZ = 1, NegX = 2, NegZ = 3 }
+local INT_TO_ROT = { [0] = "PosX", [1] = "PosZ", [2] = "NegX", [3] = "NegZ" }
 
 -- ----------------------------- ------------ HELPER METHODS ------------- -----------------------------
 
@@ -79,7 +81,15 @@ local function compressSave(save)
 		local originCFrame = GridService.fromCFrame(CFrame.new(pivotPosition))
 		
 		for id, gate in ipairs(save.G) do
-			gate.CFrame = GridService.fromCFrame(originCFrame._cframe:toObjectSpace(gate.CFrame))
+			local relativeCFrame = originCFrame._cframe:ToObjectSpace(gate.CFrame)
+			local gridStructure = GridService.fromCFrame(relativeCFrame)
+			
+			gate.CFrame = {
+				X = gridStructure.Position.X,
+				Y = gridStructure.Position.Y,
+				Z = gridStructure.Position.Z,
+				R = ROT_TO_INT[gridStructure.Rotation] or 0
+			}
 		end
 	end
 	
@@ -87,7 +97,26 @@ local function compressSave(save)
 end
 
 local function decompressSave(compressedSave)
-	return compressedSave
+	local decompressedSave = deepCopy(compressedSave)
+	
+	-- Decompresses the CFrame
+	for offsetID, data in ipairs(compressedSave.G) do
+		local savedCF = data.CFrame
+		
+		local position = Vector3.new(savedCF.X, savedCF.Y, savedCF.Z)
+		local rotationStr = INT_TO_ROT[savedCF.R] or "PosX"
+		
+		local rotVector
+		if rotationStr == "PosZ" then rotVector = position + Vector3.zAxis
+		elseif rotationStr == "NegZ" then rotVector = position - Vector3.zAxis
+		elseif rotationStr == "PosX" then rotVector = position + Vector3.xAxis
+		elseif rotationStr == "NegX" then rotVector = position - Vector3.xAxis
+		end
+		
+		local relativeCFrame = CFrame.lookAt(position, rotVector)
+		decompressedSave.G[offsetID].CFrame = GridService.fromCFrame(relativeCFrame)
+	end
+	return decompressedSave
 end
 
 -- ----------------------------- ---------- MODULE DEFINITIONS ----------- -----------------------------
@@ -96,8 +125,10 @@ local Saves = {}
 
 function Saves.Load(playerID: number, identifier: string, loadCFrame: CFrame): (boolean, string?)
 	if not playerDatas[playerID] then return false, "Player has no saves!" end
-	local saveData = playerDatas[playerID][identifier]
-	if not saveData then return false, "Player has no such save!" end
+	local masterSaveData = playerDatas[playerID][identifier]
+	if not masterSaveData then return false, "Player has no such save!" end
+	
+	local saveData = decompressSave(deepCopy(masterSaveData))
 	
 	-- Validate CFrames
 	for offsetID, data in ipairs(saveData.G) do
@@ -178,7 +209,7 @@ function Saves.Save(playerID: number, identifier: string, gates: { number } ): (
 		end
 		
 		if next(outConns) ~= nil then
-			C[newID] = outConns
+			C[tostring(newID)] = outConns
 		end
 	end
 	
@@ -203,7 +234,9 @@ end
 
 function Saves.GetAll(playerID: number)
 	simulate_lag()
-	return playerDatas[playerID] or {}
+	local saves = {}
+	for name, data in pairs(playerDatas[playerID] or {}) do saves[name] = decompressSave(data) end
+	return saves
 end
 
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
