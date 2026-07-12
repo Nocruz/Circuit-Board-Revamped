@@ -22,6 +22,8 @@ local gridTexturePrefab: Texture = buildModeGuiFolder.Grid
 local nameGuiPrefab: BillboardGui = buildModeGuiFolder.MoveNamePopup
 
 local Terrain = Workspace:WaitForChild("Terrain")
+local Baseplate = Terrain:WaitForChild("Baseplate")
+local GatesFolder = Workspace:WaitForChild("Gates")
 
 -- Events
 local permissionQuery: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Queries"):WaitForChild("Permission")
@@ -35,17 +37,27 @@ State.__index = State
 
 local function DeactivationContext(): "Skybox" | "Invalid" | "Valid"
 	local hit, instance = PointerService.HitPosition, PointerService.HoveredInstance :: Instance
-	if not hit then return "Skybox" end
-	if instance:IsDescendantOf(Terrain.GateStands) or instance:IsDescendantOf(Terrain.Incinerators) or instance:IsDescendantOf(workspace.Gates.Server) then return "Invalid" end
+	if not hit or not instance then return "Skybox" end
+	
+	if instance:IsDescendantOf(Terrain.GateStands)
+		or instance:IsDescendantOf(Terrain.Incinerators)
+		or instance:IsDescendantOf(GatesFolder.Server) then return "Invalid" end
 	return "Valid"
 end
 
 function State:showUIs()
-	self.BaseHighlight.Adornee = self.Ghost:FindFirstChild("Base") or error("Gate had no 'Base' children")
-	self.BaseHighlight.Visible = true
-	self.BaseHighlight.Parent = self.Ghost
+	if not self.IsEquipped or not self.Ghost then return end
 	
-	self.GridTexture.Parent = Workspace:FindFirstChild("Terrain"):FindFirstChild("Baseplate") or error("Workspace.Terrain.Baseplate does not exist")
+	local base = self.Ghost:FindFirstChild("Base")
+	if base then
+		self.BaseHighlight.Adornee = base
+		self.BaseHighlight.Visible = true
+		self.BaseHighlight.Parent = self.Ghost
+	end
+	
+	if Baseplate then
+		self.GridTexture.Parent = Baseplate
+	end
 	
 	self.NameGui.Adornee = self.Ghost
 	self.NameGui.Enabled = true
@@ -54,19 +66,27 @@ function State:showUIs()
 end
 
 function State:hideUIs()
-	self.BaseHighlight.Adornee = nil
-	self.BaseHighlight.Visible = false
-	self.BaseHighlight.Parent = nil
+	if self.BaseHighlight then
+		self.BaseHighlight.Adornee = nil
+		self.BaseHighlight.Visible = false
+		self.BaseHighlight.Parent = nil
+	end
 	
-	self.GridTexture.Parent = nil
+	if self.GridTexture then
+		self.GridTexture.Parent = nil
+	end
 	
-	self.NameGui.Adornee = nil
-	self.NameGui.Enabled = false
-	self.NameGui.TextLabel.Text = "No Gate"
-	self.NameGui.Parent = nil
+	if self.NameGui then
+		self.NameGui.Adornee = nil
+		self.NameGui.Enabled = false
+		self.NameGui.TextLabel.Text = "No Gate"
+		self.NameGui.Parent = nil
+	end
 end
 
 function State:MoveGhostToPointer()
+	if not self.IsEquipped or not self.Gate then return end
+	
 	local position = PointerService.HitPosition
 	if not position then
 		self.Ghost:PivotTo(CFrame.new(0, -100, 0))
@@ -105,7 +125,7 @@ end
 
 -- ----------------------------- --------- STATE IMPLEMENTATION ---------- -----------------------------
 
-function State.new(player: Player, character: Model)
+function State.new(player: Player)
 	local self = setmetatable({}, State)
 	self.Player = player
 	self.Rotation = 0
@@ -121,6 +141,7 @@ function State.new(player: Player, character: Model)
 	self.RotationConnection = nil
 	
 	self.Active = false
+	self.IsEquipped = true
 	
 	return self
 end
@@ -134,27 +155,48 @@ function State:Enter()
 end
 
 function State:Activated()
+	if not self.IsEquipped then return end
+	
 	if self.Active then -- We are placing the gate
 		local context = DeactivationContext()
+		
+		local gateID = self.Gate and self.Gate:GetAttribute("GateID")
+		local currentPivot = self.Ghost and self.Ghost:GetPivot()
+		
+		if not gateID or not self.Gate then
+			self:CleanUpGhost()
+			return
+		end
+		
 		if context == "Valid" then
-			local success, message = spawnEvent:InvokeServer(self.Gate:GetAttribute("GateID"), self.Ghost:GetPivot())
+			local success, message = spawnEvent:InvokeServer(gateID, currentPivot)
+			if not self.IsEquipped then return end
+			
 			if not success then
 				MessageService.SendMessage(message)
 			end
-		else
-			print("Canceled spawn!")
+		
 		end
 		
 		self:CleanUpGhost()
+	
 	else -- We are copying the gate
 		local gate = PointerService.HoveredGate
 		if gate == nil then return end
 		
-		local success, message = permissionQuery:InvokeServer(gate:GetAttribute("GateID"), "Spawn")
+		local gateID = gate:GetAttribute("GateID")
+		if not gateID then return end
+		
+		local success, message = permissionQuery:InvokeServer(gateID, "Spawn")
+		if not self.IsEquipped then return end
+		
 		if not success then
 			MessageService.SendMessage(message)
 			return
 		end
+		
+		-- Double check gate existance after network yield
+		if not gate or not gate.Parent then return end
 		
 		self.Gate = gate
 		self.Ghost = self.Gate:Clone()
@@ -186,11 +228,14 @@ function State:Deactivated()
 end
 
 function State:Exit()
+	if not self.IsEquipped then return end
+	self.IsEquipped = false
+	
 	self:CleanUpGhost()
 	
-	self.BaseHighlight:Destroy()
-	self.GridTexture:Destroy()
-	self.NameGui:Destroy()
+	if self.BaseHighlight then self.BaseHighlight:Destroy() end
+	if self.GridTexture then self.GridTexture:Destroy() end
+	if self.NameGui then self.NameGui:Destroy() end
 	
 	table.clear(self)
 end
