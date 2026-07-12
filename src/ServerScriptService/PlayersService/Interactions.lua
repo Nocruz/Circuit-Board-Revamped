@@ -127,19 +127,23 @@ local Interactions = {}
 
 local QUERY_COOLDOWN = 0.05 -- seconds
 local EVENT_COOLDOWN = 0.1 -- seconds
+local LOAD_COOLDOWN = 3 -- seconds
 local queryCooldowns: { [number]: true } = {}
 local eventCooldowns: { [number]: true } = {}
+local loadCooldowns:  { [number]: true } = {}
 
-local function IsCooldowned(id: number, from: "Query" | "Event"): boolean
-	return if from == "Query"
-		then queryCooldowns[id] ~= nil
-		else eventCooldowns[id] ~= nil
+local function IsCooldowned(id: number, from: "Query" | "Event" | "Load"): boolean
+	return
+		if from == "Query" then queryCooldowns[id] ~= nil
+		elseif from == "Event" then eventCooldowns[id] ~= nil
+		else --[[from == "Load" then]] loadCooldowns[id] ~= nil
 end
 
-local function SetCooldown(id: number, duration: number, from: "Query" | "Event")
-	local cooldowns = if from == "Query"
-		then queryCooldowns
-		else eventCooldowns
+local function SetCooldown(id: number, duration: number, from: "Query" | "Event" | "Load")
+	local cooldowns =
+		if from == "Query" then queryCooldowns
+		elseif from == "Event" then eventCooldowns
+		else --[[from == "Load" then]] loadCooldowns
 	
 	if cooldowns[id] then return end
 	
@@ -147,7 +151,7 @@ local function SetCooldown(id: number, duration: number, from: "Query" | "Event"
 	task.delay(duration, function() cooldowns[id] = nil end)
 end
 
--- ----------------------------- ----------- QUERY PERMISSIONS ----------- -----------------------------
+-- ----------------------------- --------------- CREATION ---------------- -----------------------------
 
 function Interactions.CreateQuery(name: string, parameterTypes: { TParameter }, successCallback: (... any) -> (boolean, string?))
 	local query = queriesFolder:FindFirstChild(name)
@@ -183,8 +187,6 @@ function Interactions.CreateQuery(name: string, parameterTypes: { TParameter }, 
 	end
 end
 
--- ----------------------------- ------------ EVENT EXECUTION ------------ -----------------------------
-
 function Interactions.CreateEvent(name: string, parameterTypes: { TParameter }, successCallback: (... any) -> (boolean, string?))
 	local event = eventsFolder:FindFirstChild(name)
 	if event == nil then
@@ -201,6 +203,40 @@ function Interactions.CreateEvent(name: string, parameterTypes: { TParameter }, 
 			return false, "Too fast!"
 		end
 		SetCooldown(player.UserId, EVENT_COOLDOWN, "Event")
+		
+		if #parameters < #parameterTypes then
+			warn("Player " .. player.Name .. " called an event with wrong parameter count")
+			return false, "Invalid parameters! Check with a moderator"
+		end
+		
+		local solvedParameters = {}
+		for i, expectedType in ipairs(parameterTypes) do
+			local success, result = ParameterSolver[expectedType](parameters[i])
+			if not success then return false, result end
+			
+			solvedParameters[i] = result
+		end
+		
+		return successCallback(player, unpack(solvedParameters))
+	end
+end
+
+function Interactions.CreateLoadEvent(name: string, parameterTypes: { TParameter }, successCallback: (... any) -> (boolean, string?))
+	local event = eventsFolder:FindFirstChild(name)
+	if event == nil then
+		event = Instance.new("RemoteFunction")
+		event.Name = name
+		event.Parent = eventsFolder
+	end
+	
+	event.OnServerInvoke = function(player: Player, ...): (boolean, string?)
+		local parameters = { ... }
+		
+		if IsCooldowned(player.UserId, "Event") then
+			print(player.Name .. " tried to execute an event, but is still in cooldown")
+			return false, "Too fast!"
+		end
+		SetCooldown(player.UserId, LOAD_COOLDOWN, "Event")
 		
 		if #parameters < #parameterTypes then
 			warn("Player " .. player.Name .. " called an event with wrong parameter count")

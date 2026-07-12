@@ -90,12 +90,11 @@ end
 
 local nextID = 1
 
---- Instantiates a new Gate, and returns its ID
---- Assumes all parameters are valid
-function GateService.Instantiate(ownerID: number, specificationName: string, cframe: CFrame, visuals, attributes): number
+local function instantiateGate(ownerID: number, specificationName: string, cframe: CFrame, visuals, attributes, state: { Signals: any, Internal: any } | any): number
 	local specification = SpecificationsHandler.Get(specificationName)
 	local solvedVisuals = setmetatable(table.clone(visuals or {}), { __index = specification.DefaultVisuals })
 	attributes = attributes or {}
+	state = state or {}
 	
 	local model: Model = Models.new(specification.Nodes, solvedVisuals) do
 		model:PivotTo(cframe)
@@ -110,10 +109,11 @@ function GateService.Instantiate(ownerID: number, specificationName: string, cfr
 		gate.OwnerID = ownerID
 		gate.Model = model
 		gate.Specification = specification
-		gate.Visuals = visuals
+		gate.Visuals = solvedVisuals
+		gate.InternalState = {}
 		
 		gate.Nodes = { Outputs = {}, Inputs = {}, Signals = {} }
-		for _, output in ipairs(specification.Nodes.Outputs) do gate.Nodes.Outputs[output] = { }; gate.Nodes.Signals[output] = false end
+		for _, output in ipairs(specification.Nodes.Outputs) do gate.Nodes.Outputs[output] = { }; gate.Nodes.Signals[output] = if (state.Signals ~= nil and state.Signals[output] ~= nil) then state.Signals[output] else false end
 		for _, input in ipairs(specification.Nodes.Inputs) do gate.Nodes.Inputs[input] = { } end
 		
 		gate.Attributes = {}
@@ -124,11 +124,18 @@ function GateService.Instantiate(ownerID: number, specificationName: string, cfr
 	
 	GatesHandler.Add(nextID, gate)
 	
-	if specification.Setup then specification.Setup(gate) end
-	Updates.Propagate(nextID)
+	if specification.Setup then specification.Setup(gate, state) end
 	
 	nextID = nextID + 1
 	return nextID - 1	
+end
+
+--- Instantiates a new Gate, and returns its ID
+--- Assumes all parameters are valid
+function GateService.Instantiate(ownerID: number, specificationName: string, cframe: CFrame, visuals, attributes): number
+	local id = instantiateGate(ownerID, specificationName, cframe, visuals, attributes, nil)
+	Updates.Propagate(id)
+	return id
 end
 
 function GateService.Destroy(gateID: number)
@@ -227,6 +234,37 @@ function GateService.Disconnect(fromGateID: number, toGateID: number, fromNode: 
 	Connections.Destroy(fromGateID, toGateID, fromNode, toNode)
 	
 	Updates.Propagate(toGateID)
+	
+	return true
+end
+
+function GateService.Load(playerID: number, saveData, loadCFrame: CFrame): (boolean, string?)
+	-- Instantiate
+	local offsetIDToRealIDs = {} 
+	for offsetID, data in ipairs(saveData.G) do
+		local realID = instantiateGate(playerID, data.Specification, loadCFrame:toWorldSpace(data.CFrame._cframe), {}, data.Attributes, data.State)
+		offsetIDToRealIDs[offsetID] = realID
+	end
+	
+	-- Connect
+	for offsetID, outConnections in pairs(saveData.C) do
+		local from = GatesHandler.Get(offsetIDToRealIDs[offsetID])
+		for outputName, inGates in pairs(outConnections) do
+			for inGateID, nodes in pairs(inGates) do
+				inGateID = tonumber(inGateID) -- Blame Roblox's dumb serialization for this
+				local to = GatesHandler.Get(offsetIDToRealIDs[inGateID])
+				for _, inputName in ipairs(nodes) do
+					local wire = Connections.new(offsetIDToRealIDs[offsetID], offsetIDToRealIDs[inGateID], from.Model.Nodes.Outputs[outputName], to.Model.Nodes.Inputs[inputName])
+					Updates.RegisterVisualChange(wire, { Color = ColorSequence.new(if Signals.toBoolean(from.Nodes.Signals[outputName]) then Color3.new(0.9, 0.9, 1) else Color3.new(0, 0, 0.1)) })
+				end
+			end
+		end
+	end
+	
+	-- Propagate
+	for _, id in pairs(offsetIDToRealIDs) do
+		Updates.Propagate(id)
+	end
 	
 	return true
 end

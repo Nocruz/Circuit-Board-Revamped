@@ -7,6 +7,8 @@
 -- Requires and Services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
+local Safezones = require(script.Parent.Safezones)
+local GateService = require(ServerScriptService.GateService)
 local GatesHandler = require(ServerScriptService.GateService.Handlers.GatesHandler)
 local Connections = require(ServerScriptService.GateService.Connections)
 local SpecificationsHandler = require(ServerScriptService.GateService.Handlers.SpecificationsHandler)
@@ -23,6 +25,13 @@ local SAVE_VERSION = 1 -- Used if Specifications change names or whatever
 
 local function simulate_lag()
 	task.wait(1)
+end
+
+local function deepCopy(t)
+	if type(t) ~= "table" then return t end
+	local copy = {}
+	for k, v in pairs(t) do copy[deepCopy(k)] = deepCopy(v) end
+	return setmetatable(copy, getmetatable(t))
 end
 
 type TVisuals = { MainMaterial: Enum.Material, DisplayName:  string, PrefabName:   string, MainColor:    Color3, OutputOffsets: { Vector2 }, InputOffsets:  { Vector2 } }
@@ -85,7 +94,20 @@ end
 
 local Saves = {}
 
-function Saves.Load(playerID: number, identifier: string)
+function Saves.Load(playerID: number, identifier: string, loadCFrame: CFrame): (boolean, string?)
+	if not playerDatas[playerID] then return false, "Player has no saves!" end
+	local saveData = playerDatas[playerID][identifier]
+	if not saveData then return false, "Player has no such save!" end
+	
+	-- Validate CFrames
+	for offsetID, data in ipairs(saveData.G) do
+		local cframe = loadCFrame:toWorldSpace(data.CFrame._cframe)
+		if Safezones.IsGateInSafezone(cframe.Position, Vector3.new(2, 1, 2)) then
+			return false, "Save is inside Safezone!"
+		end
+	end
+	
+	return GateService.Load(playerID, saveData, loadCFrame)
 end
 
 -- Returns (success: boolean, error_message: string?, new_entry: table)
@@ -106,23 +128,29 @@ function Saves.Save(playerID: number, identifier: string, gates: { number } ): (
 		
 		-- (P)alette
 		local paletteID = nil
-		for id, palette in pairs(P) do
-			if areVisualsEqual(gate.Visuals, palette) then
-				paletteID = id
-				break
+		if next(gate.Visuals) ~= nil then
+			for id, palette in pairs(P) do
+				if areVisualsEqual(gate.Visuals, palette) then
+					paletteID = id
+					break
+				end
 			end
-		end
-		if paletteID == nil then
-			P[#P + 1] = gate.Visuals
-			paletteID = #P
+			if paletteID == nil then
+				P[#P + 1] = gate.Visuals
+				paletteID = #P
+			end
 		end
 		
 		-- (G)ate 
 		local entry = {
 			ID = gate.ID,
-			Attributes = gate.Attributes,
+			Attributes = deepCopy(gate.Attributes),
 			Specification = gate.Specification.Name,
-			CFrame = gate.Model:GetPivot()
+			CFrame = gate.Model:GetPivot(),
+			State = {
+				Signals = deepCopy(gate.Nodes.Signals),
+				Internal = deepCopy(gate.InternalState)
+			}
 		}
 		G[#G + 1] = entry
 		savedGateIDs[entry.ID] = true
@@ -135,12 +163,16 @@ function Saves.Save(playerID: number, identifier: string, gates: { number } ): (
 		
 		local specification = SpecificationsHandler.Get(entry.Specification)
 		for i, name in ipairs(specification.Nodes.Outputs) do
-			local allOuts = Connections.GetAllOutgoing(entry.ID, name)
-			for outGateID, nodes in pairs(allOuts) do
+			for outGateID, nodes in pairs(Connections.GetAllOutgoing(entry.ID, name)) do
 				if G[oldToNewIDs[outGateID]] == nil then continue end
+				
+				-- Roblox is so dumb it thinks the sparce array is a literal array, so I need to stringify the keys
+				-- God knows what this breaks
+				local serializationKey = tostring(oldToNewIDs[outGateID])
 				for node in pairs(nodes) do
-					outConns[oldToNewIDs[outGateID]] = outConns[oldToNewIDs[outGateID]] or {}
-					table.insert(outConns[oldToNewIDs[outGateID]], node)
+					outConns[name] = outConns[name] or {} -- C[newID][outputName]
+					outConns[name][serializationKey] = outConns[name][serializationKey] or {}
+					table.insert(outConns[name][serializationKey], node)
 				end
 			end
 		end

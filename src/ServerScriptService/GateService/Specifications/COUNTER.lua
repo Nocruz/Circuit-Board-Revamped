@@ -1,52 +1,60 @@
 return {
-  Nodes = { Outputs = { "Output" }, Inputs = { "Down", "Reset", "Up", "Delta", "ResetTo" } },
-  DefaultVisuals = {
-    MainMaterial = Enum.Material.DiamondPlate,
-    MainColor = Color3.fromRGB(85, 45, 0)
-  },
-  AttributeData = {
-    ["Min"] = { Default = 0, Predicates = { } },
-    ["Max"] = { Default = 100, Predicates = { } },
-    ["Increment"] = { Default = 1, Predicates = { } },
-    ["ResetTo"] = { Default = 0, Predicates = { } },
-  },
-
-  Setup = function(self)
-    self.Nodes.Signals["Output"] = 0
-    self.LastState = { Down = false, Up = false }
-  end,
-
-  Process = function(self)
-    local Down, Reset, Up = self:ReadInput("Down").AsBoolean(), self:ReadInput("Reset").AsBoolean(), self:ReadInput("Up").AsBoolean()
-
-    local hasIncrementConnection, Increment = self:ReadAttributeFromNode("Increment", "Delta")
-    Increment = if hasIncrementConnection then Increment.AsNumber() else Increment
-    local hasResetConnection, ResetTo = self:ReadAttributeFromNode("ResetTo", "ResetTo")
-    ResetTo = if hasResetConnection then ResetTo.AsNumber() else ResetTo
-
-    local currentCount = self.Nodes.Signals["Output"]
-    local nextCount = currentCount
-
-    if Reset then
-  	  self.Nodes.Signals["Output"] = ResetTo
-  	  return
-  	else
-  		if Up and not self.LastState.Up then
-  			nextCount += Increment
-  		end
-
-  		if Down and not self.LastState.Down then
-  			nextCount -= Increment
-  		end
-  	end
-
-    local min = self.Attributes.Min
-    local max = self.Attributes.Max
-    if min > max then min, max = max, min end
-
-  	nextCount = math.clamp(nextCount, min, max)
-
-  	self.LastState = { Up = Up, Down = Down }
-    self.Nodes.Signals["Output"] = nextCount
-  end
+	Nodes = { Outputs = { "Output" }, Inputs = { "Down", "Reset", "Up", "Delta", "ResetTo" } },
+	DefaultVisuals = {
+		MainMaterial = Enum.Material.DiamondPlate,
+		MainColor = Color3.fromRGB(85, 45, 0)
+	},
+	
+	AttributeData = {
+		["Min"] = { Default = 0, Predicates = { } },
+		["Max"] = { Default = 100, Predicates = { } },
+		["Increment"] = { Default = 1, Predicates = { } },
+		["ResetTo"] = { Default = 0, Predicates = { } },
+	},
+	
+	Setup = function(self, state)
+		if state.Internal then
+			self.InternalState = {
+				Count = if state.Internal.Count ~= nil then state.Internal.Count else 0,
+				LastState = if state.Internal.LastState then state.Internal.LastState else { Down = false, Up = false }
+			}
+		else
+			self.InternalState = {
+				Count = 0,
+				LastState = { Down = false, Up = false }
+			}
+		end
+		
+		self.Nodes.Signals["Output"] = self.InternalState.Count
+	end,
+	
+	Process = function(self)
+		local isUpPressed    = self:ReadInput("Up").AsBoolean()
+		local isDownPressed  = self:ReadInput("Down").AsBoolean()
+		local isResetPressed = self:ReadInput("Reset").AsBoolean()
+		
+		local hasIncrementConnection, increment = self:ReadAttributeFromNode("Increment", "Delta")
+		increment = if hasIncrementConnection then increment.AsNumber() else increment
+		local hasResetConnection, resetTo = self:ReadAttributeFromNode("ResetTo", "ResetTo")
+		resetTo = if hasResetConnection then resetTo.AsNumber() else resetTo
+		
+		if isResetPressed then
+			self.InternalState.Count = resetTo
+		else
+			if isUpPressed and not self.InternalState.LastState.Up then
+				self.InternalState.Count += increment
+			end
+			if isDownPressed and not self.InternalState.LastState.Down then
+				self.InternalState.Count -= increment
+			end
+		end
+		
+		local min = self.Attributes.Min
+		local max = self.Attributes.Max
+		if min > max then min, max = max, min end
+		self.InternalState.Count = math.clamp(self.InternalState.Count, min, max)
+		self.InternalState.LastState.Up   = isUpPressed
+		self.InternalState.LastState.Down = isDownPressed
+		self.Nodes.Signals["Output"] = self.InternalState.Count
+	end
 }

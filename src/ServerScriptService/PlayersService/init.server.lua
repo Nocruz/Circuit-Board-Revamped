@@ -235,9 +235,8 @@ Interactions.CreateEvent("Save", { "SaveIdentifier", "GateIDTable" }, function(p
 	return true, infoMessage, result
 end)
 
-Interactions.CreateEvent("Load", { "SaveIdentifier" }, function(player: Player, identifier: string)
-	warn("Not implemented!")
-	return true
+Interactions.CreateLoadEvent("Load", { "SaveIdentifier", "CFrame" }, function(player: Player, identifier: string, loadCFrame: CFrame)
+	return Saves.Load(player.UserId, identifier, loadCFrame)
 end)
 
 Interactions.CreateEvent("EraseSave", { "SaveIdentifier" }, function(player: Player, identifier: string)

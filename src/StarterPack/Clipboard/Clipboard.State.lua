@@ -49,8 +49,17 @@ local function toGridEdgePosition(position)
 end
 
 local function getConnectionCount(c)
+	--- C is a table of [fromGateID]: { [fromNodeName]: { [toGateID]: { NodeNames } } }
 	local count = 0
-	for _ in pairs(c) do count += 1 end
+	for fromGateID, outputs in pairs(c) do
+		for fromNodeName, toGates in pairs(outputs) do
+			for toGateID, nodes in pairs(toGates) do
+				for index, toNode in ipairs(nodes) do
+					count += 1
+				end
+			end
+		end
+	end
 	return count
 end
 
@@ -151,6 +160,8 @@ function State:DestroyGhost()
 	if self.gui then
 		self.gui.Frame.Interactable = true
 	end
+	
+	self.ghostRotation = nil
 end
 
 function State:LoadGhost()
@@ -171,6 +182,7 @@ function State:LoadGhost()
 	end
 	
 	ghostModel.WorldPivot = CFrame.new()
+	self.ghostRotation = CFrame.new()
 	
 	if PointerService.HitPosition then
 		ghostModel.Parent = Workspace
@@ -189,7 +201,10 @@ function State:LoadGhost()
 	end)
 	self.ghostRotationConnection = UserInputService.InputBegan:Connect(function(input, gp)
 		if gp then return end
-		if input.KeyCode == Enum.KeyCode.R then ghostModel.WorldPivot *= CFrame.Angles(0, math.rad(-90), 0) end
+		if input.KeyCode == Enum.KeyCode.R then
+			ghostModel.WorldPivot *= CFrame.Angles(0, math.rad(-90), 0)
+			self.ghostRotation *= CFrame.Angles(0, math.rad(90), 0)
+		end
 	end)
 	
 	self.ghostModel = ghostModel
@@ -428,6 +443,7 @@ function State.new(player: Player, character: Model)
 	self.ghostModel = nil
 	self.ghostMouseConnection = nil
 	self.ghostRotationConnection = nil
+	self.ghostRotation = nil
 	
 	self.boundingBox = nil
 	self.boundingBoxStartPos = nil
@@ -483,14 +499,15 @@ function State:Activated()
 	end
 	if self.isPointingGhost then
 		if not PointerService.HitPosition then return end
-		self:DestroyGhost()
 		
-		local saveCFrame = GridService.fromCFrame(CFrame.new(PointerService.HitPosition))._cframe	
+		local saveCFrame = self.ghostModel:GetPivot() * self.ghostRotation
 		local success, message = loadEvent:InvokeServer(self.currentSave, saveCFrame)
 		if not success then
 			MessageService.SendMessage(message)
 		end
 		self.currentSave = nil
+		
+		self:DestroyGhost()
 	end
 end
 
@@ -502,8 +519,8 @@ function State:Deactivated()
 end
 
 function State:Exit()
-	self:DestroyGui()
 	self:DestroyErasePrompt()
+	self:DestroyGui()
 	self:DestroyBoundingBox()
 	self:DestroyHighlights()
 	self:DestroyGhost()
