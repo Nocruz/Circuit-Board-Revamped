@@ -29,17 +29,29 @@ State.__index = State
 -- ----------------------------- --------- HELPER METHODS -------- ------------------------------
 
 function State:ApplyState()
-	local changes = {}
+	if not self.IsEquipped or not self.SelectedGate or not self.SelectedGate.Parent then return end
 	
-	for _, row: Instance in ipairs(self.Gui.Frame.ScrollingFrame:GetChildren()) do
+	local frame = self.Gui:FindFirstChild("Frame")
+	local scrollingFrame = frame and frame:FindFirstChild("ScrollingFrame")
+	if not scrollingFrame then return end
+	
+	local changes = {}
+	for _, row: Instance in ipairs(scrollingFrame:GetChildren()) do
 		if not row:IsA("Frame") then continue end
 		local valueHolder = row:FindFirstChild("TextBox") or row:FindFirstChild("TextButton")
-		changes[row.Name] = valueHolder.Text
+		if valueHolder and (valueHolder:IsA("TextBox") or valueHolder:IsA("TextButton")) then
+			changes[row.Name] = valueHolder.Text
+		end
 	end
 	
 	if next(changes) == nil then return true end
 	
-	local success, result = changeAttributesEvent:InvokeServer(self.SelectedGate:GetAttribute("GateID"), changes)
+	local gateID = self.SelectedGate:GetAttribute("GateID")
+	if not gateID then return end
+	
+	local success, result = changeAttributesEvent:InvokeServer(gateID, changes)
+	if not self.IsEquipped then return end
+	
 	if not success then
 		MessageService.SendMessage(result)
 	end
@@ -47,19 +59,27 @@ function State:ApplyState()
 end
 
 function State:CreateGUI(attributesData)
+	if not self.IsEquipped or not self.HoveredGate or not self.HoveredGate.Parent then return end
+	
 	self:DestroyGui()
 	self.SelectedGate = self.HoveredGate
 	
 	self.Gui = guiPrefab:Clone()
 	self.Gui.Adornee = self.SelectedGate
-	self.Gui.Parent  = playerGui
 	self.Gui.GateName.Text = self.SelectedGate.Name
+	self.Gui.Parent  = playerGui
+	
 	self.GuiTogglersConnections = {}
 	self.GuiClosedConnection = self.Gui.ApplyButton.Activated:Connect(function()
+		if not self.IsEquipped then return end
 		if self:ApplyState() then
 			self:DestroyGui()
 		end
 	end)
+	
+	local frame = self.Gui:FindFirstChild("Frame")
+	local scrollingFrame = frame and frame:FindFirstChild("ScrollingFrame")
+	if not scrollingFrame then return end
 	
 	-- Instantiate all the attribute frame editors
 	for name, data in pairs(attributesData) do
@@ -69,16 +89,18 @@ function State:CreateGUI(attributesData)
 			row.Name = name
 			row.TextLabel.Text = name
 			row.TextBox.Text = tostring(data.Value)
-			row.Parent = self.Gui.Frame.ScrollingFrame
+			row.Parent = scrollingFrame
 		elseif #data.AllowedValues > 0 then
 			local row: Frame & any = self.Gui.ToggleAttributePrefab:Clone()
 			row.Visible = true
 			row.Name = name
 			row.TextLabel.Text = name
 			row.TextButton.Text = tostring(data.Value)
-			row.Parent = self.Gui.Frame.ScrollingFrame
+			row.Parent = scrollingFrame
 			row:SetAttribute("AllowedValues_Index", table.find(data.AllowedValues, data.Value))
+			
 			table.insert(self.GuiTogglersConnections, row.TextButton.Activated:Connect(function()
+				if not self.IsEquipped or not row:GetAttribute("AllowedValues_Index") then return end
 				local newIndex = ((row:GetAttribute("AllowedValues_Index") :: number) % #data.AllowedValues) + 1
 				row.TextButton.Text = tostring(data.AllowedValues[newIndex])
 				row:SetAttribute("AllowedValues_Index", newIndex)
@@ -88,41 +110,50 @@ function State:CreateGUI(attributesData)
 end
 
 function State:DestroyGui()
-	if self.Gui ~= nil then
-		if self.GuiClosedConnection ~= nil then
-			self.GuiClosedConnection:Disconnect()
-			self.GuiClosedConnection = nil
-		end
-		
+	if self.GuiClosedConnection ~= nil then
+		self.GuiClosedConnection:Disconnect()
+		self.GuiClosedConnection = nil
+	end
+	
+	if self.GuiTogglersConnections then
 		for _, connection in ipairs(self.GuiTogglersConnections) do
 			connection:Disconnect()
 		end
 		table.clear(self.GuiTogglersConnections)
 		self.GuiTogglersConnections = nil
-		
+	end
+	
+	if self.Gui then
 		self.Gui:Destroy()
 		self.Gui = nil
-		
-		self.SelectedGate = nil
 	end
+	
+	self.SelectedGate = nil
 end
 
 function State:ResetHighlight()
-	if self.HoveredGate then
+	if self.HoveredGateHighlight then
 		self.HoveredGateHighlight.Adornee = nil
 		self.HoveredGateHighlight.Parent = nil
+	end
+	if self.HoveredGate then
 		self.HoveredGate = nil
 	end
 end
 
 function State:SetHighlight(gate: Instance)
+	if not self.IsEquipped or not gate or not gate.Parent then return end
 	self.HoveredGate = gate
-	self.HoveredGateHighlight.Adornee = gate
-	self.HoveredGateHighlight.Parent = gate
+	if self.HoveredGateHighlight then
+		self.HoveredGateHighlight.Adornee = gate
+		self.HoveredGateHighlight.Parent = gate
+	end
 end
 
 function State:UpdateHighlight(gate: Model?)
-	if not gate then
+	if not self.IsEquipped then return end
+	
+	if not gate or not gate.Parent then
 		self:ResetHighlight()
 	elseif self.HoveredGate ~= gate then
 		self:ResetHighlight()
@@ -132,7 +163,7 @@ end
 
 -- ----------------------------- --------- STATE IMPLEMENTATION ---------- -----------------------------
 
-function State.new(player: Player, character: Model)
+function State.new(player: Player)
 	local self = setmetatable({}, State)
 	self.Player = player
 	
@@ -146,6 +177,8 @@ function State.new(player: Player, character: Model)
 	self.GuiTogglersConnections = nil
 	self.SelectedGate = nil
 	
+	self.IsEquipped = true
+	
 	return self
 end
 
@@ -153,20 +186,28 @@ function State:Enter()
 	self.HoveredGateHighlight = highlightPrefab:Clone()
 	
 	self.HoverConnection = PointerService.OnHoverChanged:Connect(function(_, gate)
+		if not self.IsEquipped then return end
 		self:UpdateHighlight(gate)
 	end)
 	self:UpdateHighlight(PointerService.HoveredGate)
 end
 
 function State:Activated()
-	if self.HoveredGate and self.HoveredGate ~= self.SelectedGate then
-		local success, result = getDataQuery:InvokeServer(self.HoveredGate:GetAttribute("GateID"))
+	if not self.IsEquipped then return end
+	
+	if self.HoveredGate and self.HoveredGate.Parent and self.HoveredGate ~= self.SelectedGate then
+		local gateID = self.HoveredGate:GetAttribute("GateID")
+		if not gateID then return end
+		
+		local success, result = getDataQuery:InvokeServer(gateID)
+		if not self.IsEquipped then return end
+		
 		if not success then
 			MessageService.SendMessage(result)
 			return
 		end
 		
-		if not next(result) then
+		if not result or typeof(result) ~= "table" or next(result) == nil then
 			MessageService.SendMessage("Gate has no attributes to change!")
 			return
 		end
@@ -179,14 +220,23 @@ function State:Deactivated()
 end
 
 function State:Exit()
-	self:ResetHighlight()
+	if not self.IsEquipped then return end
+	self.IsEquipped = false
 	
+	self:ResetHighlight()
 	self:DestroyGui()
 	
 	if self.HoverConnection then
 		self.HoverConnection:Disconnect()
 		self.HoverConnection = nil
 	end
+	
+	if self.HoveredGateHighlight then
+		self.HoveredGateHighlight:Destroy()
+		self.HoveredGateHighlight = nil
+	end
+	
+	table.clear(self)
 end
 
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
