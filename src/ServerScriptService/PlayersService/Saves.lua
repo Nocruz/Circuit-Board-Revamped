@@ -133,6 +133,7 @@ function Saves.Load(playerID: number, identifier: string, loadCFrame: CFrame): (
 	
 	-- Validate CFrames
 	for offsetID, data in ipairs(saveData.G) do
+		if offsetID % 20 == 0 then task.wait() end
 		local cframe = loadCFrame:toWorldSpace(data.CFrame._cframe)
 		if Safezones.IsGateInSafezone(cframe.Position, Vector3.new(2, 1, 2)) then
 			return false, "Save is inside Safezone!"

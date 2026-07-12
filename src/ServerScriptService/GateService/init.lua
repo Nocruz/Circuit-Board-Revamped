@@ -249,6 +249,7 @@ function GateService.Load(playerID: number, saveData, loadCFrame: CFrame): (bool
 	-- Instantiate
 	local offsetIDToRealIDs = {} 
 	for offsetID, data in ipairs(saveData.G) do
+		if offsetID % 20 == 0 then task.wait() end
 		local realID = instantiateGate(playerID, data.Specification, loadCFrame:toWorldSpace(data.CFrame._cframe), {}, deepCopy(data.Attributes), deepCopy(data.State))
 		offsetIDToRealIDs[offsetID] = realID
 	end
