@@ -35,7 +35,7 @@ local function resetCurrentState()
 	table.clear(characterConnections)
 end
 
-local function transiteTo(nextState)
+local function transitionTo(nextState)
 	if currentState and currentState.Exit then
 		currentState:Exit()
 	end
@@ -56,7 +56,7 @@ local function initializeCharacter(character: Model)
 	if not humanoid then error("Unexpected Error: Humanoid did not load in time.") end
 	
 	local defaultState = DefaultStateClass.new(player, character)
-	transiteTo(defaultState)
+	transitionTo(defaultState)
 	
 	local toolEquippedConnection = character.ChildAdded:Connect(function(tool)
 		if not tool:IsA("Tool") then return end
@@ -65,7 +65,7 @@ local function initializeCharacter(character: Model)
 		if not stateModule then return end
 		
 		local toolState = require(stateModule).new(player, character, tool)
-		transiteTo(toolState)
+		transitionTo(toolState)
 	end)
 	table.insert(characterConnections, toolEquippedConnection)
 	
@@ -76,7 +76,7 @@ local function initializeCharacter(character: Model)
 		task.defer(function()
 			if character and character:IsDescendantOf(Workspace) and not character:FindFirstChildOfClass("Tool") then
 				local defaultState = DefaultStateClass.new(player, character)
-				transiteTo(defaultState)
+				transitionTo(defaultState)
 			end
 		end)
 	end)
