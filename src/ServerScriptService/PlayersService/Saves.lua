@@ -48,6 +48,58 @@ local function areVisualsEqual(a: TVisuals, b: TVisuals): boolean
 	return true
 end
 
+-- Serializes raw Roblox userdata types into JSON-safe dictionaries
+local function serializeData(v: any): any
+	local vType = typeof(v)
+	if vType == "table" then
+		local copy = {}
+		for k, val in pairs(v) do
+			copy[tostring(k)] = serializeData(val)
+		end
+		return copy
+	elseif vType == "Vector3" then
+		return { __type = "Vector3", X = v.X, Y = v.Y, Z = v.Z }
+	elseif vType == "Color3" then
+		return { __type = "Color3", R = v.R, G = v.G, B = v.B }
+	elseif vType == "EnumItem" then
+		return { __type = "EnumItem", Enum = tostring(v.EnumType), Name = v.Name }
+	elseif vType == "CFrame" then
+		return { __type = "CFrame", Components = {v:GetComponents()} }
+	elseif vType == "userdata" or vType == "Instance" then
+		return nil -- Drop completely unsupported engine types to prevent saves from corrupting
+	else
+		return v -- Strings, numbers, booleans pass through safely
+	end
+end
+
+-- Reconstructs original Roblox objects out of stored data-store primitives
+local function deserializeData(v: any): any
+	if type(v) ~= "table" then return v end
+	
+	if v.__type then
+		if v.__type == "Vector3" then
+			return Vector3.new(v.X, v.Y, v.Z)
+		elseif v.__type == "Color3" then
+			return Color3.new(v.R, v.G, v.B)
+		elseif v.__type == "EnumItem" then
+			local enumName = string.match(v.Enum, "Enum%.(.+)") or v.Enum
+			local success, enumGroup = pcall(function() return Enum[enumName] end)
+			if success and enumGroup then
+				return enumGroup[v.Name] or enumGroup:GetEnumItems()[1]
+			end
+			return nil
+		elseif v.__type == "CFrame" then
+			return CFrame.new(unpack(v.Components))
+		end
+	end
+	
+	local copy = {}
+	for k, val in pairs(v) do
+		copy[k] = deserializeData(val)
+	end
+	return copy
+end
+
 -- This function removes the OldID from the gates (As it is not needed at all)
 -- It also sets all CFrames from World-Position (Basically useless) to a new Offset based.
 -- The offset is calculated from the centermost gate.
@@ -93,7 +145,7 @@ local function compressSave(save)
 end
 
 local function decompressSave(compressedSave)
-	local decompressedSave = deepCopy(compressedSave)
+	local decompressedSave = deserializeData(compressedSave)
 	
 	-- Decompresses the CFrame
 	for offsetID, data in ipairs(compressedSave.G) do
@@ -169,8 +221,8 @@ function Saves.Save(playerID: number, identifier: string, gates: { number } ): (
 			Specification = gate.Specification.Name,
 			CFrame = gate.Model:GetPivot(),
 			State = {
-				Signals = deepCopy(gate.Nodes.Signals),
-				Internal = deepCopy(gate.InternalState)
+				Signals = serializeData(gate.Nodes.Signals),
+				Internal = serializeData(gate.InternalState)
 			}
 		}
 		G[#G + 1] = entry
