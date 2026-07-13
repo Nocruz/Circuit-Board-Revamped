@@ -13,6 +13,7 @@ local PointerService = require(LocalServices.PointerService)
 local MessageService = require(LocalServices.MessageService)
 
 -- References
+local serverGatesFolder = Workspace:WaitForChild("Gates"):WaitForChild("Server")
 local wiresFolder = Workspace:WaitForChild("Wires")
 
 -- Visuals
@@ -49,6 +50,7 @@ end
 
 function State:SetHighlight(gate: Instance)
 	if not self.IsEquipped or not gate or not gate.Parent then return end
+	if gate:IsDescendantOf(serverGatesFolder) then return end
 	
 	self.SelectedGate = gate
 	self.SelectedGateHighlight.Adornee = gate

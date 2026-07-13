@@ -4,6 +4,7 @@
 
 -- Requires and services
 local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterPlayerScripts = game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts")
 
@@ -16,6 +17,7 @@ local highlightPrefab: SelectionBox = ReplicatedStorage:WaitForChild("Client"):W
 local guiPrefab: BillboardGui = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("NeedleGUI")
 
 -- References
+local serverGatesFolder = Workspace:WaitForChild("Gates"):WaitForChild("Server")
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 
 -- Events
@@ -143,6 +145,8 @@ end
 
 function State:SetHighlight(gate: Instance)
 	if not self.IsEquipped or not gate or not gate.Parent then return end
+	if gate:IsDescendantOf(serverGatesFolder) then return end
+	
 	self.HoveredGate = gate
 	if self.HoveredGateHighlight then
 		self.HoveredGateHighlight.Adornee = gate

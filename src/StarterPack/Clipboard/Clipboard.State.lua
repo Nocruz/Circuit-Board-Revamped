@@ -27,6 +27,7 @@ local slotPrefab: Frame & any = guiPrefab.SaveSlotPrefab
 -- References
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 local gatesFolder = Workspace:WaitForChild("Gates")
+local serverGatesFolder = gatesFolder:WaitForChild("Server")
 local ghostPrefab: Model = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("GhostPrefab")
 
 -- Gate detections
@@ -496,6 +497,7 @@ function State:UpdateHighlights()
 	for _, part in ipairs(parts) do
 		local gate = part:FindFirstAncestorWhichIsA("Model")
 		if gate == nil then continue end
+		if gate:IsDescendantOf(serverGatesFolder) then continue end
 		
 		local id = gate:GetAttribute("GateID")
 		if id == nil or type(id) ~= "number" then continue end 
