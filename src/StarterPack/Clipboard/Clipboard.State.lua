@@ -19,7 +19,8 @@ local PointerService = require(LocalServices.PointerService)
 local MessageService = require(LocalServices.MessageService)
 
 -- Visuals
-local highlightPrefab: SelectionBox = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("ClipboardHighlight")
+local highlightPrefab: Highlight = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("ClipboardHighlight")
+local selectionBoxPrefab: SelectionBox = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("ClipboardSelectionBox")
 local guiPrefab: ScreenGui & any = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("ClipboardGui")
 local slotPrefab: Frame & any = guiPrefab.SaveSlotPrefab
 
@@ -448,7 +449,7 @@ function State:StartBoundingBox()
 		box.CanTouch = false
 		box.Transparency = 1
 		
-		local visuals = highlightPrefab:Clone()
+		local visuals = selectionBoxPrefab:Clone()
 		visuals.Adornee = box
 		visuals.Parent = box
 		
