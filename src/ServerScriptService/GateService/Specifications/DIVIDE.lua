@@ -3,7 +3,7 @@ return {
 	DefaultVisuals = { 
 		MainMaterial = Enum.Material.DiamondPlate,
 		MainColor = Color3.fromRGB(55, 60, 85),
-		DisplayName = "÷"
+		DisplayName = "/"
 	},
 	
 	Process = function(self)
