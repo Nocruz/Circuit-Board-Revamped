@@ -19,7 +19,7 @@ return {
 	end,
 	
 	Process = function(self)
-		self.InternalState.Color = Color3.new(self:ReadInput("R").AsNumber(), self:ReadInput("G").AsNumber(), self:ReadInput("B").AsNumber())
+		self.InternalState.Color = Color3.new(math.min(1, self:ReadInput("R").AsNumber()), math.min(1, self:ReadInput("G").AsNumber()), math.min(1, self:ReadInput("B").AsNumber()))
 		Updates.RegisterVisualChange(self.Model.Screen, { Color = self.InternalState.Color })
 	end
 }
