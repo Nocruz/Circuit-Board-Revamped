@@ -36,7 +36,6 @@ local overlapParams = OverlapParams.new()
 overlapParams.FilterType = Enum.RaycastFilterType.Include
 
 -- Events
-local getSavesDataQuery: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Queries"):WaitForChild("GetSavesData")
 local saveEvent: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("Save")
 local loadEvent: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("Load")
 local eraseEvent: RemoteFunction= ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("EraseSave")
@@ -219,9 +218,13 @@ function State:LoadGhost()
 	
 	local G = saveData.G
 	for _, data in ipairs(G) do
-		local ghost: Model = ghostPrefab:Clone()
+		local ghost: Model & any = ghostPrefab:Clone()
 		ghost.Name = "Ghost"
 		ghost:PivotTo(data.CFrame._cframe)
+		if data.Specification and data.Specification == "SPLITTER" then
+			ghost.Base.Size = Vector3.new(6, 0.2, 2)
+			ghost.Main.Size = Vector3.new(6, 0.8, 2)
+		end
 		ghost.Parent = ghostModel
 	end
 	
@@ -608,8 +611,9 @@ function State:Activated()
 		
 		if not success then
 			MessageService.SendMessage(message)
+		elseif message ~= nil then
+			MessageService.SendColouredMessage(message, Color3.new(1, 0.4, 0.2))
 		end
-	
 	end
 end
 

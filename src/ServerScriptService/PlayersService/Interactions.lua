@@ -17,9 +17,6 @@ local GridService = require(ReplicatedStorage.GridService)
 local eventsFolder = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events")
 local queriesFolder = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Queries")
 
--- Constants
-local simulatedLag: number = 0.4
-
 -- ----------------------------- --------- PARAMETER RESOLUTION ---------- -----------------------------
 
 export type TParameter = "GateID" | "Action" | "CFrame" | "string" | "AttributesTable" | "SaveIdentifier" | "GateIDTable"
@@ -165,8 +162,6 @@ function Interactions.CreateQuery(name: string, parameterTypes: { TParameter }, 
 	end
 	
 	query.OnServerInvoke = function(player: Player, ...): (boolean, string?)
-		task.wait(simulatedLag)
-		
 		local parameters = { ... }
 		
 		if IsCooldowned(player.UserId, "Query") then
@@ -201,8 +196,6 @@ function Interactions.CreateEvent(name: string, parameterTypes: { TParameter }, 
 	end
 	
 	event.OnServerInvoke = function(player: Player, ...): (boolean, string?)
-		task.wait(simulatedLag)
-		
 		local parameters = { ... }
 		
 		if IsCooldowned(player.UserId, "Event") then
@@ -237,8 +230,6 @@ function Interactions.CreateLoadEvent(name: string, parameterTypes: { TParameter
 	end
 	
 	event.OnServerInvoke = function(player: Player, ...): (boolean, string?)
-		task.wait(simulatedLag)
-		
 		local parameters = { ... }
 		
 		if IsCooldowned(player.UserId, "Event") then

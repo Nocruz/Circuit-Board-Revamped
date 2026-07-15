@@ -246,10 +246,17 @@ function GateService.Load(playerID: number, saveData, loadCFrame: CFrame): (bool
 		return setmetatable(copy, getmetatable(t))
 	end
 	
+	local saveContainedInvalidSpecification = false
+	
 	-- Instantiate
 	local offsetIDToRealIDs = {} 
 	for offsetID, data in ipairs(saveData.G) do
 		if offsetID % 20 == 0 then task.wait() end
+		local specification = SpecificationsHandler.Get(data.Specification)
+		if specification == nil then
+			saveContainedInvalidSpecification = true
+			continue
+		end
 		local realID = instantiateGate(playerID, data.Specification, loadCFrame:toWorldSpace(data.CFrame._cframe), {}, deepCopy(data.Attributes), deepCopy(data.State))
 		offsetIDToRealIDs[offsetID] = realID
 	end
@@ -283,7 +290,7 @@ function GateService.Load(playerID: number, saveData, loadCFrame: CFrame): (bool
 		Updates.Propagate(id)
 	end
 	
-	return true
+	return true, if saveContainedInvalidSpecification then "Save had specifications that are not on this version! They were skipped on load" else nil
 end
 
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
