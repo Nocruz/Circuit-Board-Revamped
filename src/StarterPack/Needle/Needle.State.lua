@@ -28,6 +28,67 @@ local changeAttributesEvent: RemoteFunction = ReplicatedStorage:WaitForChild("Cl
 local State = {}
 State.__index = State
 
+-- ----------------------------- --------- LRU ATTRIBUTES -------- ------------------------------
+
+local AttributeCache = {
+	_cache = {},
+	_order = {},
+	MAX_SIZE = 10
+}
+
+function AttributeCache.get(gateID: number)
+	local data = AttributeCache._cache[gateID]
+	if data then
+		local index = table.find(AttributeCache._order, gateID)
+		if index then table.remove(AttributeCache._order, index) end
+		table.insert(AttributeCache._order, gateID)
+	end
+	return data
+end
+
+function AttributeCache.set(gateID: number, data: { any })
+	local index = table.find(AttributeCache._order, gateID)
+	if index then table.remove(AttributeCache._order, index) end
+	
+	table.insert(AttributeCache._order, gateID)
+	AttributeCache._cache[gateID] = data
+	
+	if #AttributeCache._order > AttributeCache.MAX_SIZE then
+		local oldestGateID = table.remove(AttributeCache._order, 1)
+		AttributeCache._cache[oldestGateID] = nil
+	end
+end
+
+function AttributeCache.invalidate(gateID: number)
+	local index = table.find(AttributeCache._order, gateID)
+	if index then table.remove(AttributeCache._order, index) end
+	AttributeCache._cache[gateID] = nil
+end
+
+function AttributeCache.update(gateID: number, changes: { any })
+	local data = AttributeCache._cache[gateID]
+	if not data then return end
+	
+	local index = table.find(AttributeCache._order, gateID)
+	if index then table.remove(AttributeCache._order, index) end
+	table.insert(AttributeCache._order, gateID)
+	
+	for name, value in pairs(changes) do
+		local attribute = data[name]
+		if not attribute then return end
+		
+		local originalType = typeof(attribute.Value)
+		if originalType == "number" then
+			attribute.Value = tonumber(value) or attribute.Value
+		elseif originalType == "boolean" then
+			if value == "true" then attribute.Value = true end
+			if value == "false" then attribute.Value = false end
+		else
+			attribute.Value = value
+		end
+	end
+end
+
 -- ----------------------------- --------- HELPER METHODS -------- ------------------------------
 
 function State:ApplyState()
@@ -53,16 +114,16 @@ function State:ApplyState()
 	
 	task.spawn(function()
 		local success, result = changeAttributesEvent:InvokeServer(gateID, changes)
-		if not self.IsEquipped then return end
+		if success then AttributeCache.update(gateID, changes) end
 		
-		if not success then MessageService.SendMessage(result) end
+		if self.IsEquipped and not success then MessageService.SendMessage(result) end
 	end)
 end
 
 function State:OpenGUI(gate: Instance)
 	if not self.IsEquipped or not self.HoveredGate or not self.HoveredGate.Parent then return end
 	
-	self:DestroyGui()
+	self:DestroyGUI()
 	self.SelectedGate = gate
 	
 	self.Gui = guiPrefab:Clone()
@@ -80,7 +141,7 @@ function State:PopulateGUI(attributesData)
 	
 	self.GuiClosedConnection = self.Gui.ApplyButton.Activated:Connect(function()
 		self:ApplyState()
-		self:DestroyGui()
+		self:DestroyGUI()
 	end)
 	
 	self.GuiTogglersConnections = {}
@@ -113,7 +174,7 @@ function State:PopulateGUI(attributesData)
 	end
 end
 
-function State:DestroyGui()
+function State:DestroyGUI()
 	if self.GuiClosedConnection ~= nil then
 		self.GuiClosedConnection:Disconnect()
 		self.GuiClosedConnection = nil
@@ -208,8 +269,13 @@ function State:Activated()
 		
 		self:OpenGUI(clickedGate)
 		
+		local cachedData = AttributeCache.get(gateID)
+		if cachedData then
+			self:PopulateGUI(cachedData)
+			return
+		end
+		
 		local gateAtRequestTime = clickedGate
-
 		task.spawn(function()
 			local success, result = getDataQuery:InvokeServer(gateID)
 			if not self.IsEquipped then return end
@@ -227,6 +293,7 @@ function State:Activated()
 					return
 				end
 				
+				AttributeCache.set(gateID, result)
 				self:PopulateGUI(result)
 			end
 		end)
@@ -241,7 +308,7 @@ function State:Exit()
 	self.IsEquipped = false
 	
 	self:ResetHighlight()
-	self:DestroyGui()
+	self:DestroyGUI()
 	
 	if self.HoverConnection then
 		self.HoverConnection:Disconnect()
