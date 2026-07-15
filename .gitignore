@@ -15,4 +15,7 @@
 # AI REFACTOR BULLS - AI STILL SUCKS IN 2026
 /AI_src
 
+# Saves backups
+/ClipboardSaves_SAVE_BETA_0.luau 
+
 sourcemap.json
