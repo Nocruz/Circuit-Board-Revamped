@@ -183,7 +183,7 @@ function State:Activated()
 		
 		elseif context == "Invalid" then
 			task.spawn(function()
-				local success, message = destroyEvent:InvokeServer(gateID)
+				local success, message = destroyEvent:InvokeServer( { [gateID] = true } )
 				if not self.IsEquipped then return end
 			
 				if not success then

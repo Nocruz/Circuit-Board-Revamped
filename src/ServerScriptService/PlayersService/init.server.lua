@@ -88,13 +88,23 @@ Interactions.CreateEvent("Spawn", { "GateID", "CFrame" }, function(player: Playe
 end)
 
 -- Gate destroyer
-Interactions.CreateEvent("Destroy", { "GateID" }, function(player: Player, gate)
-	if not Permissions.CanPlayerDo(player.UserId, gate.OwnerID, "Delete") then
-		return false, "Lacks permissions to destroy this gate"
+Interactions.CreateEvent("Destroy", { "GateIDTable" }, function(player: Player, gates)
+	local skipped = false
+	local allowedGates = {}
+	
+	for _, gate in ipairs(gates) do
+		if not Permissions.CanPlayerDo(player.UserId, gate.OwnerID, "Delete") then
+			skipped = true
+			continue
+		end
+		table.insert(allowedGates, gate.ID)
+	end
+
+	for _, gateID in ipairs(allowedGates) do
+		GateService.Destroy(gateID)
 	end
 	
-	GateService.Destroy(gate.ID)
-	return true
+	return true, if skipped then "Some gates were skipped because of permissions protection" else nil
 end)
 
 -- Gate mover
