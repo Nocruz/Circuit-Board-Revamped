@@ -56,7 +56,7 @@ function State:CreatePointer()
 	self.PointerBall.Parent = Workspace
 	
 	self.PointerMoveConnection = RunService.RenderStepped:Connect(function()
-		local hit, node = PointerService.HitPosition, PointerService.HoveredNode
+		local hit, node, gate = PointerService.HitPosition, PointerService.HoveredNode, PointerService.HoveredGate
 		
 		if hit == nil and (not node or not node.Parent) then
 			if self.PointerBall then self.PointerBall.Parent = nil end
@@ -65,7 +65,7 @@ function State:CreatePointer()
 		
 		if self.PointerBall then
 			self.PointerBall.Parent = Workspace
-			self.PointerBall.Position = if (node and node.Parent) then node.Position else hit
+			self.PointerBall.Position = if (node and node.Parent and gate:GetAttribute("OwnerID") ~= 0) then node.Position else hit
 		end
 	end)
 end
@@ -129,18 +129,17 @@ function State:Enter()
 	self:CreatePointer()
 	
 	self.HoveredGate = PointerService.HoveredGate
+	if self.HoveredGate ~= nil and self.HoveredGate:GetAttribute("OwnerID") == 0 then self.HoveredGate = nil end
 	if self.HoveredGate then self:SetNodeLabels(true) end
 	self.LabelsConnection = PointerService.OnHoverChanged:Connect(function(_, gate, _)
 		if self.HoveredGate and gate ~= self.HoveredGate then
 			self:SetNodeLabels(false)
-			self.HoveredGate = gate
 		end
 		
-		self.HoveredGate = gate
+		local isServerOwned = gate and gate:GetAttribute("OwnerID") == 0
+		self.HoveredGate = if isServerOwned then nil else gate
 		
-		if gate then
-			self:SetNodeLabels(true)
-		end
+		if gate ~= nil and not isServerOwned then self:SetNodeLabels(true) end
 	end)
 end
 
@@ -173,40 +172,53 @@ function State:Activated()
 		local toGateID = toGate and toGate:GetAttribute("GateID")
 		if not fromGateID or not toGateID then return end
 		
-		local success, message = connectEvent:InvokeServer(fromGateID, toGateID, fromNode, toNode)
-		if not self.IsEquipped then return end
-		
-		if not success then
-			MessageService.SendMessage(message)
-			return
-		end
-		
 		self.StartGate = nil
 		self.StartNode = nil
-		self:DestroyWire()
 		self.Active = false
+		
+		local wire = self.Wire
+		self.Wire = nil
+		wire.Attachment1 = node:FindFirstChild("WireAttachment")
+		
+		task.spawn(function()
+			local success, message = connectEvent:InvokeServer(fromGateID, toGateID, fromNode, toNode)
+			if wire then wire:Destroy() end
+			if not self.IsEquipped then return end
+			
+			if not success then MessageService.SendMessage(message) end
+		end)
 	
 	else
-		local gate, node = PointerService.HoveredGate, PointerService.HoveredNode
-		if gate == nil or node == nil then return end
+		local gate = self.HoveredGate
+		if gate == nil then return end
+		
+		local node = PointerService.HoveredNode
+		if node == nil then return end
 
 		local gateID = gate and gate:GetAttribute("GateID")
 		if not gateID then return end
 		
-		local success, message = permissionQuery:InvokeServer(gateID, "Wire")
-		if not self.IsEquipped then return end
-		
-		if not success then
-			MessageService.SendMessage(message)
-			return
-		end
-		
-		-- Sanity check after networking yield
-		if not gate or not gate.Parent or not node or not node.Parent then return end
 		self.StartGate = gate
 		self.StartNode = node
 		self:CreateWire()
 		self.Active = true
+		
+		local currentStartNode = self.StartNode
+		
+		task.spawn(function()
+			local success, message = permissionQuery:InvokeServer(gateID, "Wire")
+			if not self.IsEquipped then return end
+			
+			if self.StartNode == currentStartNode and not success then
+				MessageService.SendMessage(message)
+				
+				self.StartGate = nil
+				self.StartNode = nil
+				self:DestroyWire()
+				self.Active = false
+			end
+		end)
+	
 	end
 end
 

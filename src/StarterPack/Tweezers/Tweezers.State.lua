@@ -165,52 +165,48 @@ function State:Activated()
 		local previousCFrame = self.GatePreviousCFrame
 		local targetedGate = self.Gate
 		
-		if not gateID or not targetedGate then
-			self:CleanUpGhost()
-			return
-		end
+		-- Ghost is no longer needed
+		self:CleanUpGhost()
+		
+		if not gateID or not targetedGate then return end
 		
 		if context == "Valid" then
-			local success, message = moveEvent:InvokeServer(gateID, currentPivot)
-			if not self.IsEquipped then return end
+			task.spawn(function()
+				local success, message = moveEvent:InvokeServer(gateID, currentPivot)
+				if not self.IsEquipped then return end
 			
-			if not success then
-				MessageService.SendMessage(message)
-				if targetedGate then targetedGate:PivotTo(previousCFrame) end
-			end
+				if not success then
+					MessageService.SendMessage(message)
+					if targetedGate then targetedGate:PivotTo(previousCFrame) end
+				end
+			end)
 		
 		elseif context == "Invalid" then
-			local success, message = destroyEvent:InvokeServer(gateID)
-			if not self.IsEquipped then return end
+			task.spawn(function()
+				local success, message = destroyEvent:InvokeServer(gateID)
+				if not self.IsEquipped then return end
 			
-			if not success then
-				MessageService.SendMessage(message)
-				if targetedGate then targetedGate:PivotTo(previousCFrame) end
-			end
+				if not success then
+					MessageService.SendMessage(message)
+					if targetedGate then targetedGate:PivotTo(previousCFrame) end
+				end
+			end)
 		
 		else -- Cancelled move
 			if targetedGate then targetedGate:PivotTo(previousCFrame) end
 		end
-		
-		self:CleanUpGhost()
 	
-	else -- We are copying the gate
+	else -- We are picking up the gate
 		local gate = PointerService.HoveredGate
 		if gate == nil then return end
 		
 		local gateID = gate:GetAttribute("GateID")
 		if not gateID then return end
 		
-		local success, message = permissionQuery:InvokeServer(gateID, "Move")
-		if not self.IsEquipped then return end
-		
-		if not success then
-			MessageService.SendMessage(message)
+		if gate:GetAttribute("OwnerID") == 0 then
+			MessageService.SendMessage("Lacks permissions to move gates owned by the Server")
 			return
 		end
-		
-		-- Double check gate existance after network yield
-		if not gate or not gate.Parent then return end
 		
 		self.Gate = gate
 		self.GatePreviousCFrame = self.Gate:GetPivot()
@@ -234,6 +230,21 @@ function State:Activated()
 		end)
 		
 		self.Active = true
+		
+		local currentGate = self.Gate
+		local originalCFrame = self.GatePreviousCFrame
+		
+		task.spawn(function()
+			local success, message = permissionQuery:InvokeServer(gateID, "Move")
+			if not self.IsEquipped then return end
+			
+			if self.Gate == currentGate and not success then
+				MessageService.SendMessage(message)
+				self:CleanUpGhost()
+				
+				if currentGate then currentGate:PivotTo(originalCFrame) end
+			end 
+		end)
 	end
 end
 

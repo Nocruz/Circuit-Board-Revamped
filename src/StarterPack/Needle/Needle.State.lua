@@ -46,42 +46,44 @@ function State:ApplyState()
 		end
 	end
 	
-	if next(changes) == nil then return true end
+	if next(changes) == nil then return end
 	
 	local gateID = self.SelectedGate:GetAttribute("GateID")
 	if not gateID then return end
 	
-	local success, result = changeAttributesEvent:InvokeServer(gateID, changes)
-	if not self.IsEquipped then return end
-	
-	if not success then
-		MessageService.SendMessage(result)
-	end
-	return success
+	task.spawn(function()
+		local success, result = changeAttributesEvent:InvokeServer(gateID, changes)
+		if not self.IsEquipped then return end
+		
+		if not success then MessageService.SendMessage(result) end
+	end)
 end
 
-function State:CreateGUI(attributesData)
+function State:OpenGUI(gate: Instance)
 	if not self.IsEquipped or not self.HoveredGate or not self.HoveredGate.Parent then return end
 	
 	self:DestroyGui()
-	self.SelectedGate = self.HoveredGate
+	self.SelectedGate = gate
 	
 	self.Gui = guiPrefab:Clone()
 	self.Gui.Adornee = self.SelectedGate
 	self.Gui.GateName.Text = self.SelectedGate.Name
-	self.Gui.Parent  = playerGui
-	
-	self.GuiTogglersConnections = {}
-	self.GuiClosedConnection = self.Gui.ApplyButton.Activated:Connect(function()
-		if not self.IsEquipped then return end
-		if self:ApplyState() then
-			self:DestroyGui()
-		end
-	end)
+	self.Gui.Parent = playerGui
+end
+
+function State:PopulateGUI(attributesData)
+	if not self.IsEquipped or not self.Gui then return end
 	
 	local frame = self.Gui:FindFirstChild("Frame")
 	local scrollingFrame = frame and frame:FindFirstChild("ScrollingFrame")
 	if not scrollingFrame then return end
+	
+	self.GuiClosedConnection = self.Gui.ApplyButton.Activated:Connect(function()
+		self:ApplyState()
+		self:DestroyGui()
+	end)
+	
+	self.GuiTogglersConnections = {}
 	
 	-- Instantiate all the attribute frame editors
 	for name, data in pairs(attributesData) do
@@ -199,24 +201,35 @@ end
 function State:Activated()
 	if not self.IsEquipped then return end
 	
-	if self.HoveredGate and self.HoveredGate.Parent and self.HoveredGate ~= self.SelectedGate then
+	local clickedGate = self.HoveredGate
+	if clickedGate and clickedGate.Parent and clickedGate ~= self.SelectedGate then
 		local gateID = self.HoveredGate:GetAttribute("GateID")
 		if not gateID then return end
 		
-		local success, result = getDataQuery:InvokeServer(gateID)
-		if not self.IsEquipped then return end
+		self:OpenGUI(clickedGate)
 		
-		if not success then
-			MessageService.SendMessage(result)
-			return
-		end
+		local gateAtRequestTime = clickedGate
+
+		task.spawn(function()
+			local success, result = getDataQuery:InvokeServer(gateID)
+			if not self.IsEquipped then return end
 		
-		if not result or typeof(result) ~= "table" or next(result) == nil then
-			MessageService.SendMessage("Gate has no attributes to change!")
-			return
-		end
-		
-		self:CreateGUI(result)
+			if self.SelectedGate == gateAtRequestTime then
+				if not success then
+					MessageService.SendMessage(result)
+					self:DestroyGUI()
+					return
+				end
+				
+				if not result or typeof(result) ~= "table" or next(result) == nil then
+					MessageService.SendMessage("Gate has no attributes to change!")
+					self:DestroyGUI()
+					return
+				end
+				
+				self:PopulateGUI(result)
+			end
+		end)
 	end
 end
 

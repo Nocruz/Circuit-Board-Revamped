@@ -141,10 +141,7 @@ function State:Activated()
 		local success, message = disconnectSingleEvent:InvokeServer(fromGate, toGate, fromNode, toNode)
 		if not self.IsEquipped then return end
 		
-		if not success then
-			MessageService.SendMessage(message)
-			return
-		end
+		if not success then MessageService.SendMessage(message) end
 	
 	elseif self.SelectedGate and self.SelectedGate.Parent then
 		local gateID = self.SelectedGate:GetAttribute("GateID")
@@ -153,10 +150,7 @@ function State:Activated()
 		local success, message = disconnectAllOutgoingEvent:InvokeServer(gateID)
 		if not self.IsEquipped then return end
 		
-		if not success then
-			MessageService.SendMessage(message)
-			return
-		end
+		if not success then MessageService.SendMessage(message) end
 	end
 end
 

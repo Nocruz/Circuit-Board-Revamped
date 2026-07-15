@@ -17,6 +17,7 @@ local LocalServices = StarterPlayerScripts.Services
 local GridService = require(ReplicatedStorage.GridService)
 local PointerService = require(LocalServices.PointerService)
 local MessageService = require(LocalServices.MessageService)
+local ClipboardRegistry = require(LocalServices.ClipboardRegistry)
 
 -- Visuals
 local highlightPrefab: Highlight = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("ClipboardHighlight")
@@ -102,7 +103,7 @@ function State:Save()
 		MessageService.SendMessage(message)
 	else
 		MessageService.SendColouredMessage("Success!", Color3.new(0, 1, 0))
-		if self.savesData then self.savesData[saveName] = result end
+		ClipboardRegistry:AddSave(saveName, result)
 	end
 	return success
 end
@@ -167,7 +168,7 @@ function State:CreateErasePrompt(saveIdentifier: string)
 				MessageService.SendMessage(message)
 			else
 				MessageService.SendColouredMessage("Save erased!", Color3.new(0, 1, 0))
-				if self.savesData then self.savesData[saveIdentifier] = nil end
+				ClipboardRegistry:RemoveSave(saveIdentifier)
 				self:ClearGUISaveSlots()
 				self:PopulateGUISaveSlots()
 			end
@@ -204,10 +205,10 @@ function State:DestroyGhost()
 end
 
 function State:LoadGhost()
-	if not self.IsEquipped or not self.savesData or not self.currentSave then return end
+	if not self.IsEquipped or not ClipboardRegistry.IsLoaded or not self.currentSave then return end
 	self:DestroyBoundingBox()
 	
-	local saveData = self.savesData[self.currentSave]
+	local saveData = ClipboardRegistry:GetSave(self.currentSave)
 	if not saveData then
 		warn("Save name does not match any entry!")
 		return
@@ -286,7 +287,7 @@ function State:DestroyGui()
 end
 
 function State:PopulateGUISaveSlots()
-	if not self.IsEquipped or not self.gui or not self.savesData then return end
+	if not self.IsEquipped or not self.gui or not ClipboardRegistry.IsLoaded then return end
 	
 	local function get24HrsString(timestamp)
 		local d = os.date("*t", timestamp)
@@ -306,7 +307,8 @@ function State:PopulateGUISaveSlots()
 	local scrollingFrame = savesFrame and savesFrame:FindFirstChild("2_ScrollingFrame")
 	if not scrollingFrame then return end
 	
-	for name, data in pairs(self.savesData) do
+	local savesData = ClipboardRegistry:GetAllSaves()
+	for name, data in pairs(savesData) do
 		if self.guiSearchText ~= nil and name:sub(1, #self.guiSearchText):lower() ~= self.guiSearchText:lower() then continue end
 		
 		local slot = slotPrefab:Clone()
@@ -564,25 +566,21 @@ function State.new(player: Player)
 	self.erasePrompt = nil
 	self.erasePromptConnection = nil
 	
-	self.savesData = nil
-	
 	self.currentSave = nil
 	
 	return self
 end
 
 function State:Enter()
-	local success, result = getSavesDataQuery:InvokeServer()
+	local success, result = ClipboardRegistry:LoadAsync()
 	if not self.IsEquipped then return end
 	
 	if not success then
 		warn("Failed to fetch server data for player " .. tostring(Players.LocalPlayer.UserId))
 		MessageService.SendMessage(result)
 	else
-		self.savesData = result
+		self:BuildGui()
 	end
-	
-	self:BuildGui()
 end
 
 function State:Activated()

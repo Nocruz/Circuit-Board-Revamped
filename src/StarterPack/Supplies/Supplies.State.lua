@@ -35,6 +35,16 @@ State.__index = State
 
 -- ----------------------------- ----------- HELPER FUNCTIONS ------------ -----------------------------
 
+local function cleanUpWires(gate: Instance)
+	local nodes = gate:FindFirstChild("Nodes")
+	local inputs = nodes and nodes:FindFirstChild("Inputs")
+	local outputs = nodes and nodes:FindFirstChild("Outputs")
+	if not nodes or not inputs or not outputs then return end
+	
+	for _, child in ipairs(inputs:GetChildren()) do if child:IsA("Beam") then child:Destroy() end end
+	for _, child in ipairs(outputs:GetChildren()) do if child:IsA("Beam") then child:Destroy() end end
+end
+
 local function DeactivationContext(): "Skybox" | "Invalid" | "Valid"
 	local hit, instance = PointerService.HitPosition, PointerService.HoveredInstance :: Instance
 	if not hit or not instance then return "Skybox" end
@@ -163,19 +173,23 @@ function State:Activated()
 		local gateID = self.Gate and self.Gate:GetAttribute("GateID")
 		local currentPivot = self.Ghost and self.Ghost:GetPivot()
 		
-		if not gateID or not self.Gate then
+		if not gateID or not self.Gate or not currentPivot then
 			self:CleanUpGhost()
 			return
 		end
 		
 		if context == "Valid" then
-			local success, message = spawnEvent:InvokeServer(gateID, currentPivot)
-			if not self.IsEquipped then return end
-			
-			if not success then
-				MessageService.SendMessage(message)
-			end
-		
+			local ghost = self.Ghost
+			self.Ghost = nil
+			task.spawn(function()
+				local success, message = spawnEvent:InvokeServer(gateID, currentPivot)
+				ghost:Destroy()
+				if not self.IsEquipped then return end
+				
+				if not success then
+					MessageService.SendMessage(message)
+				end
+			end)
 		end
 		
 		self:CleanUpGhost()
@@ -187,19 +201,10 @@ function State:Activated()
 		local gateID = gate:GetAttribute("GateID")
 		if not gateID then return end
 		
-		local success, message = permissionQuery:InvokeServer(gateID, "Spawn")
-		if not self.IsEquipped then return end
-		
-		if not success then
-			MessageService.SendMessage(message)
-			return
-		end
-		
-		-- Double check gate existance after network yield
-		if not gate or not gate.Parent then return end
-		
+		-- Create ghost before query for 0 latency
 		self.Gate = gate
 		self.Ghost = self.Gate:Clone()
+		cleanUpWires(self.Ghost)
 		self.Ghost.Parent = Workspace
 		PointerService.AddToFilter(self.Ghost)
 		
@@ -221,6 +226,20 @@ function State:Activated()
 		end)
 		
 		self.Active = true
+		
+		-- Asking for forgiveness is better than asking for permission
+		local ghost = self.Ghost
+		task.spawn(function()
+			local success, message = permissionQuery:InvokeServer(gateID, "Spawn")
+			if not self.IsEquipped then return end
+			
+			if self.Ghost == ghost then
+				if not success then
+					MessageService.SendMessage(message)
+					self:CleanUpGhost()
+				end
+			end
+		end)
 	end
 end
 
