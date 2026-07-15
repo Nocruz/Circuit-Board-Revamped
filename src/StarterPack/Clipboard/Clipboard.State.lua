@@ -40,6 +40,9 @@ local saveEvent: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitF
 local loadEvent: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("Load")
 local eraseEvent: RemoteFunction= ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("EraseSave")
 
+-- Cooldown flag
+local globalLoadCooldownEnd = 0
+
 -- State definition
 local State = {}
 State.__index = State
@@ -267,6 +270,49 @@ end
 
 -- ----------------------------- ------------- GUI METHODS --------------- -----------------------------
 
+function State:UpdateLoadButtonsVisuals(remainingTime)
+	if not self.gui then return end
+	local frame = self.gui:FindFirstChild("Frame")
+	local savesFrame = frame and frame:FindFirstChild("2_SavesFrame")
+	local scrollingFrame = savesFrame and savesFrame:FindFirstChild("2_ScrollingFrame")
+	if not scrollingFrame then return end
+
+	for _, child in ipairs(scrollingFrame:GetChildren()) do
+		if child:IsA("Frame") then
+			local loadBtn = child:FindFirstChild("LoadButton") :: TextButton
+			if loadBtn then
+				if remainingTime > 0 then
+					loadBtn.Interactable = false
+					loadBtn.Text = "Wait (" .. remainingTime .. "s)"
+				else
+					loadBtn.Interactable = true
+					loadBtn.Text = "Load"
+				end
+			end
+		end
+	end
+end
+
+function State:StartLoadCooldown()
+	globalLoadCooldownEnd = os.clock() + 3
+	
+	if self.isCoolingDown then return end
+	self.isCoolingDown = true
+	
+	task.spawn(function()
+		while self.IsEquipped and os.clock() < globalLoadCooldownEnd do
+			local remaining = math.ceil(globalLoadCooldownEnd - os.clock())
+			self:UpdateLoadButtonsVisuals(remaining)
+			task.wait(0.1)
+		end
+		
+		if self.IsEquipped then
+			self.isCoolingDown = false
+			self:UpdateLoadButtonsVisuals(0)
+		end
+	end)
+end
+
 function State:DestroyGui()
 	self:ClearGUISaveSlots()
 	
@@ -321,7 +367,17 @@ function State:PopulateGUISaveSlots()
 		slot.Visible = true
 		slot.Parent = scrollingFrame
 		
-		self.guiConnections.LoadButtons[name] = (slot.LoadButton :: TextButton).Activated:Connect(function()
+		local loadBtn = slot.LoadButton :: TextButton
+		
+		if os.clock() < globalLoadCooldownEnd then
+			loadBtn.Interactable = false
+			loadBtn.Text = "Wait (" .. math.ceil(globalLoadCooldownEnd - os.clock()) .. "s)"
+		else
+			loadBtn.Interactable = true
+			loadBtn.Text = "Load"
+		end
+		
+		self.guiConnections.LoadButtons[name] = loadBtn.Activated:Connect(function()
 			if not self.IsEquipped then return end
 			self.currentSave = name
 			self:LoadGhost(name)
@@ -583,6 +639,10 @@ function State:Enter()
 		MessageService.SendMessage(result)
 	else
 		self:BuildGui()
+		
+		if os.clock() < globalLoadCooldownEnd then
+			self:StartLoadCooldown()
+		end
 	end
 end
 
@@ -605,6 +665,8 @@ function State:Activated()
 		
 		self.currentSave = nil
 		self:DestroyGhost()
+		
+		self:StartLoadCooldown()
 		
 		local success, message = loadEvent:InvokeServer(targetSave, saveCFrame)
 		if not self.IsEquipped then return end
