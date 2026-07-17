@@ -74,6 +74,7 @@ return {
 		
 		self.Nodes.Signals["Output"] = checkForPlayers(self.PRESSURE.Hitbox) > 0
 		self.PRESSURE.Main.Position = self.Model.Base:GetPivot().Position + if self.Nodes.Signals["Output"] then Vector3.new(0, 0.7, 0) else Vector3.new(0, 0.85, 0)
+		if self.Nodes.Signals["Output"] then self:QueueSound("Activate Activator") end
 	end,
 	
 	Process = function(self, payload)
@@ -81,8 +82,10 @@ return {
 		
 		if payload.Boolean then
 			if not self.Attributes.IsPressable then return end
+			self:QueueSound("Activate Activator")
 			self.Nodes.Signals["Output"] = true
 		else
+			self:QueueSound("Deactivate Activator")
 			self.Nodes.Signals["Output"] = false
 		end
 		

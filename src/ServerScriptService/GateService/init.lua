@@ -86,6 +86,10 @@ function SUPERCLASS_GATE:ReadAttributeFromNode(attributeName: string, nodeName: 
 	}
 end
 
+function SUPERCLASS_GATE:QueueSound(soundID)
+	Updates.QueueSound(soundID, self.Model:GetPivot().Position)
+end
+
 -- ----------------------------- ----------- INSTANCE FUNCTIONS ---------- -----------------------------
 
 local nextID = 1

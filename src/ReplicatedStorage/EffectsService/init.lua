@@ -26,7 +26,7 @@ if game:GetService("Players").LocalPlayer then
 				if not EffectsService.IsMusicPlaying then break end
 			
 				music:Play()
-				music.Stopped:Wait()
+				music.Ended:Wait()
 			end
 		end
 	end)
@@ -45,11 +45,17 @@ function EffectsService.PlaySFX(name: string, position: Vector3?)
 		sfx.Parent = attachment
 		sfx:Play()
 		
-		return function() attachment:Destroy() end
+		local function destroy() attachment:Destroy() end
+		
+		sfx.Ended:Once(destroy)
+		return destroy
 	else
 		sfx.Parent = SoundService
 		sfx:Play()
 		
+		local function destroy() sfx:Destroy() end
+		
+		sfx.Ended:Once(destroy)
 		return function() sfx:Destroy() end
 	end
 end

@@ -1,9 +1,12 @@
 -- Updates.lua (Fixed Rule 5: Self-Referential Buffering)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Connections = require(script.Parent.Connections)
 local Signals = require(script.Parent.Signals)
 local VisualOptimizer = require(script.VisualOptimizer)
 local GatesHandler = require(script.Parent.Handlers.GatesHandler)
+
+local EffectsService = require(ReplicatedStorage.EffectsService)
 
 local Updates = {}
 
@@ -14,6 +17,7 @@ local MAX_TOTAL_STEPS = 5000
 
 -- State
 local UpdateCounts = {}
+local QueuedSounds = {} -- NEW: Holds sounds to play this frame
 
 -- Fast O(1) BFS Queue
 local BFSQueue = {}
@@ -58,6 +62,17 @@ local function popFromBFS()
         return item
     end
     return nil
+end
+
+-------------------------------------------------
+-- Audio Helpers
+-------------------------------------------------
+local function flushQueuedSounds()
+	for soundID, position in pairs(QueuedSounds) do
+	   EffectsService.PlaySFX(soundID, position)
+	end
+	
+	table.clear(QueuedSounds)
 end
 
 -------------------------------------------------
@@ -150,6 +165,11 @@ end
 -------------------------------------------------
 -- Public API
 -------------------------------------------------
+
+function Updates.QueueSound(soundID, position)
+    if soundID then QueuedSounds[soundID] = position end
+end
+
 function Updates.Propagate(gateID, payload)
     -- Rule 5 Intercept: Explicit self-propagation
     if gateID == currentExecutingGate then
@@ -267,6 +287,8 @@ local function step()
     end
 
     VisualOptimizer.ApplyAll()
+    flushQueuedSounds()
+    
     table.clear(UpdateCounts)
 end
 

@@ -14,6 +14,7 @@ local LocalServices = StarterPlayer.StarterPlayerScripts.Services
 local MessageService = require(StarterPlayer.StarterPlayerScripts.Services.MessageService)
 local PointerService = require(LocalServices.PointerService)
 local GridService = require(ReplicatedStorage.GridService)
+local EffectsService = require(ReplicatedStorage:WaitForChild("EffectsService"))
 
 -- References
 local buildModeGuiFolder = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("BuildMode")
@@ -28,6 +29,9 @@ local GatesFolder = Workspace:WaitForChild("Gates")
 -- Events
 local permissionQuery: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Queries"):WaitForChild("Permission")
 local spawnEvent: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("Spawn")
+
+-- Sounds
+local SOUND_PICK = "Pick Gate"
 
 -- State definition
 local State = {}
@@ -160,7 +164,7 @@ function State:Enter()
 	self.BaseHighlight = baseHighlightPrefab:Clone()
 	self.GridTexture = gridTexturePrefab:Clone()
 	self.NameGui = nameGuiPrefab:Clone()
-	
+
 	self:hideUIs()
 end
 
@@ -226,6 +230,8 @@ function State:Activated()
 		end)
 		
 		self.Active = true
+		
+		EffectsService.PlaySFX(SOUND_PICK, self.Ghost:GetPivot().Position)
 		
 		-- Asking for forgiveness is better than asking for permission
 		local ghost = self.Ghost

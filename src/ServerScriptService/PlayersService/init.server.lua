@@ -4,9 +4,10 @@
 ]]
 
 -- Requires and Services
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local ServerScriptService = game:GetService("ServerScriptService")
 
 local Permissions = require(script.Permissions)
 local Interactions = require(script.Interactions)
@@ -17,6 +18,8 @@ local Connections = require(ServerScriptService.GateService.Connections)
 local Attributes  = require(ServerScriptService.GateService.Attributes)
 local Updates = require(ServerScriptService.GateService.Updates)
 local GatesHandler = require(ServerScriptService.GateService.Handlers.GatesHandler)
+
+local EffectsService = require(ReplicatedStorage.EffectsService)
 
 -- References
 local gatesFolder = Workspace:FindFirstChild("Gates")
@@ -83,6 +86,8 @@ Interactions.CreateEvent("Spawn", { "GateID", "CFrame" }, function(player: Playe
 		return false, "Lacks permissions to spawn a gate of this type"
 	end		
 	
+	EffectsService.PlaySFX("Place Gate", cframe.Position)
+	
 	GateService.Instantiate(player.UserId, gate.Specification.Name, cframe, gate.Visuals, gate.Attributes)
 	return true
 end)
@@ -99,10 +104,13 @@ Interactions.CreateEvent("Destroy", { "GateIDTable" }, function(player: Player, 
 		end
 		table.insert(allowedGates, gate.ID)
 	end
-
-	for _, gateID in ipairs(allowedGates) do
+	
+	local soundAnchorGate = if #allowedGates > 0 then GatesHandler.Get(allowedGates[1]) else nil
+	for i, gateID in ipairs(allowedGates) do
 		GateService.Destroy(gateID)
 	end
+	
+	if soundAnchorGate then EffectsService.PlaySFX("Destroy Gate", soundAnchorGate.Model:GetPivot().Position) end
 	
 	return true, if skipped then "Some gates were skipped because of permissions protection" else nil
 end)
@@ -111,7 +119,9 @@ end)
 Interactions.CreateEvent("Move", { "GateID", "CFrame" }, function(player: Player, gate, cframe: CFrame)
 	if not Permissions.CanPlayerDo(player.UserId, gate.OwnerID, "Move") then
 		return false, "Lacks permissions to move this gate"
-	end		
+	end
+	
+	EffectsService.PlaySFX("Place Gate", cframe.Position)
 	
 	GateService.Move(gate.ID, cframe)
 	return true
@@ -127,6 +137,8 @@ Interactions.CreateEvent("Connect", { "GateID", "GateID", "string", "string" }, 
 		return false, "Lacks permissions to wire to this gate"
 	end
 	
+	EffectsService.PlaySFX("Connect Wire", fromGate.Model:GetPivot().Position)
+	
 	return GateService.Connect(fromGate.ID, toGate.ID, fromNode, toNode)
 end)
 
@@ -140,6 +152,8 @@ Interactions.CreateEvent("DisconnectSingle", { "GateID", "GateID", "string", "st
 		return false, "Lacks permissions to cut wires to this gate"
 	end
 	
+	EffectsService.PlaySFX("Cut Wire", fromGate.Model:GetPivot().Position)
+	
 	return GateService.Disconnect(fromGate.ID, toGate.ID, fromNode, toNode)
 end)
 
@@ -148,6 +162,7 @@ Interactions.CreateEvent("DisconnectAllOutgoing", { "GateID" }, function(player:
 		return false, "Lacks permissions to cut wires from this gate"
 	end
 	
+	local hasCut = false
 	-- Remember: Gate.Specification.Nodes: { "Inputs": { string }, "Outputs": { string } }
 	for _, output in ipairs(fromGate.Specification.Nodes.Outputs) do
 		local outgoing = Connections.GetAllOutgoing(fromGate.ID, output)
@@ -161,10 +176,14 @@ Interactions.CreateEvent("DisconnectAllOutgoing", { "GateID" }, function(player:
 				local success, message = GateService.Disconnect(fromGate.ID, toGateID, output, toNode)
 				if not success then
 					return success, message
+				else
+					hasCut = true
 				end
 			end
 		end
 	end
+	
+	if hasCut then EffectsService.PlaySFX("Cut Wire", fromGate.Model:GetPivot().Position) end
 	
 	return true
 end)

@@ -47,6 +47,12 @@ return {
 		end
 		self.SWITCH.Main.Position = self.Model.Base:GetPivot().Position + if self.InternalState.IsActivated then Vector3.new(0, 0.7, 0) else Vector3.new(0, 0.85, 0)
 		self.Nodes.Signals["Output"] = self.InternalState.IsActivated
+		
+		if self.Nodes.Signals["Output"] then
+			self:QueueSound("Activate Activator")
+		else
+			self:QueueSound("Deactivate Activator")
+		end
 	end,
 	
 	Destroy = function(self)

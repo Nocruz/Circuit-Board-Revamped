@@ -42,10 +42,12 @@ return {
 			if not self.Attributes.IsClickable or self.InternalState.IsActivated then return end
 			
 			self.InternalState.IsActivated = true
+			self:QueueSound("Activate Activator")
 			Updates.ScheduleWakeup(self.ID, self.Attributes.Duration, { Source = "TimerExpired"}, "Timer" )
 		end
 		
 		if payload.Source == "TimerExpired" then
+			self:QueueSound("Deactivate Activator")
 			self.InternalState.IsActivated = false
 		end
 		

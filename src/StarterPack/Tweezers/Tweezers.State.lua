@@ -13,6 +13,7 @@ local LocalServices = StarterPlayer.StarterPlayerScripts.Services
 local MessageService = require(StarterPlayer.StarterPlayerScripts.Services.MessageService)
 local PointerService = require(LocalServices.PointerService)
 local GridService = require(ReplicatedStorage.GridService)
+local EffectsService = require(ReplicatedStorage:WaitForChild("EffectsService"))
 
 -- References
 local buildModeGuiFolder = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("BuildMode")
@@ -28,6 +29,9 @@ local GatesFolder = Workspace:WaitForChild("Gates")
 local permissionQuery: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Queries"):WaitForChild("Permission")
 local moveEvent: RemoteFunction = ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("Move")
 local destroyEvent: RemoteFunction =ReplicatedStorage:WaitForChild("Client"):WaitForChild("Events"):WaitForChild("Destroy")
+
+-- Sounds
+local SOUND_PICK = "Pick Gate"
 
 -- State definition
 local State = {}
@@ -150,6 +154,7 @@ function State:Enter()
 	self.BaseHighlight = baseHighlightPrefab:Clone()
 	self.GridTexture = gridTexturePrefab:Clone()
 	self.NameGui = nameGuiPrefab:Clone()
+
 	
 	self:hideUIs()
 end
@@ -234,6 +239,7 @@ function State:Activated()
 		local currentGate = self.Gate
 		local originalCFrame = self.GatePreviousCFrame
 		
+		EffectsService.PlaySFX(SOUND_PICK, currentGate:GetPivot().Position)
 		task.spawn(function()
 			local success, message = permissionQuery:InvokeServer(gateID, "Move")
 			if not self.IsEquipped then return end

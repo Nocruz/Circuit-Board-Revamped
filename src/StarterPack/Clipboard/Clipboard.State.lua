@@ -17,6 +17,7 @@ local LocalServices = StarterPlayerScripts.Services
 local GridService = require(ReplicatedStorage.GridService)
 local PointerService = require(LocalServices.PointerService)
 local MessageService = require(LocalServices.MessageService)
+local EffectsService = require(ReplicatedStorage.EffectsService)
 local ClipboardRegistry = require(LocalServices.ClipboardRegistry)
 
 -- Visuals
@@ -100,6 +101,8 @@ function State:Save()
 	
 	local success, message, result = saveEvent:InvokeServer(saveName, targetGates)
 	if not self.IsEquipped then return end
+	
+	EffectsService.PlaySFX("Save")
 	
 	if not success then
 		MessageService.SendMessage(message)
@@ -484,6 +487,7 @@ end
 
 -- ----------------------------- --------- BOUNDING BOX METHODS ---------- -----------------------------
 
+local isPlayingSound = false
 function State:UpdateBoundingBox()
 	if not self.IsEquipped or not self.boundingBox or not PointerService.HitPosition then return end
 	
@@ -497,6 +501,14 @@ function State:UpdateBoundingBox()
 	self.boundingBox.Size = endPoint - startPoint
 	self.boundingBox.CFrame = CFrame.new((startPoint + endPoint) / 2)
 	
+	if not isPlayingSound then
+		isPlayingSound = true
+		task.spawn(function()
+			task.wait(0.06)
+			isPlayingSound = false
+		end)
+		EffectsService.PlaySFX("Resize Save")
+	end
 	self:UpdateHighlights()
 end
 
@@ -673,8 +685,11 @@ function State:Activated()
 		
 		if not success then
 			MessageService.SendMessage(message)
-		elseif message ~= nil then
-			MessageService.SendColouredMessage(message, Color3.new(1, 0.4, 0.2))
+		else
+			EffectsService.PlaySFX("Load")
+			if message ~= nil then
+				MessageService.SendColouredMessage(message, Color3.new(1, 0.4, 0.2))
+			end
 		end
 	end
 end

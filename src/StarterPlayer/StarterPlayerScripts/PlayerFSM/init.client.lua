@@ -10,7 +10,11 @@
 -- Requires and Services
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+
+-- Effects
+local EffectsService = require(ReplicatedStorage:WaitForChild("EffectsService"))
 
 -- References
 local DefaultStateClass = require(script.DisplayNamesOnHoverState)

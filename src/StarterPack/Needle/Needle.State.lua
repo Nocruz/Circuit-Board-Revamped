@@ -11,6 +11,7 @@ local StarterPlayerScripts = game:GetService("StarterPlayer"):WaitForChild("Star
 local LocalServices = StarterPlayerScripts.Services
 local PointerService = require(LocalServices.PointerService)
 local MessageService = require(LocalServices.MessageService)
+local EffectsService = require(ReplicatedStorage:WaitForChild("EffectsService"))
 
 -- Visuals
 local highlightPrefab: SelectionBox = ReplicatedStorage:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("NeedleHighlight")
@@ -130,6 +131,8 @@ function State:OpenGUI(gate: Instance)
 	self.Gui.Adornee = self.SelectedGate
 	self.Gui.GateName.Text = self.SelectedGate.Name
 	self.Gui.Parent = playerGui
+	
+	EffectsService.PlaySFX("Open Needle")
 end
 
 function State:PopulateGUI(attributesData)
@@ -191,6 +194,7 @@ function State:DestroyGUI()
 	if self.Gui then
 		self.Gui:Destroy()
 		self.Gui = nil
+		EffectsService.PlaySFX("Close Needle")
 	end
 	
 	self.SelectedGate = nil
