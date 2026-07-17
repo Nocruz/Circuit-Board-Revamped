@@ -84,7 +84,7 @@ local ParameterSolver: { [TParameter]: (... any) -> (boolean, string | any) } = 
 		if not iden or type(iden) ~= "string" then
 			return false, "Invalid parameters! Identifier was not a string"
 		end
-		local match = iden.match(iden, "^[%a_][%w _%-#()]*$")
+		local match = iden.match(iden, "^[%a_0-9][%w _%-#()]*$")
 		if match ~= nil then
 			return true, iden
 		else

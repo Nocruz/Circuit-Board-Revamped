@@ -5,6 +5,10 @@
 		Should also spawn a beam that tracks the player (As a flash trail or similar)
 ]]
 
+-- Requires and Services
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local EffectsService = require(ReplicatedStorage:WaitForChild("EffectsService"))
+
 -- State definition
 local State = {}
 State.__index = State
@@ -14,11 +18,15 @@ local LOW_SPEED = 50
 local HIGH_SPEED = 120
 local DEFAULT_SPEED = 16 -- Standard Roblox walkspeed
 
+local SOUND_EFFECT = "Speed Brace"
+
 -- ----------------------------- --------- STATE IMPLEMENTATION ---------- -----------------------------
 
 function State.new(player: Player, character: Model)
 	local self = setmetatable({}, State)
 	self.humanoid = character:FindFirstChildOfClass("Humanoid")
+	
+	self.stopMusic = nil
 	
 	self.IsActive = false
 	
@@ -27,6 +35,7 @@ end
 
 function State:Enter()
 	self.humanoid.WalkSpeed = LOW_SPEED
+	self.stopMusic = EffectsService.PlaySFX(SOUND_EFFECT)
 end
 
 function State:Activated()
@@ -41,6 +50,10 @@ end
 
 function State:Exit()
 	self.humanoid.WalkSpeed = DEFAULT_SPEED
+	if self.stopMusic then
+		self.stopMusic()
+		self.stopMusic = nil
+	end
 end
 
 -- ----------------------------- ------------- END OF MODULE ------------- -----------------------------
