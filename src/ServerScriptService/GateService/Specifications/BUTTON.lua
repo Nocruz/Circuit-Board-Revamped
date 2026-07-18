@@ -22,7 +22,7 @@ return {
 		end
 		
 		self.BUTTON = {}
-		self.BUTTON.Main = self.Model.Main
+		self.BUTTON.Weld = self.Model.Main.Weld
 		self.BUTTON.ClickDetector = if self.OwnerID ~= 0
 			then (function() local c = Instance.new("ClickDetector"); c.Parent = self.Model; return c end)()
 			else nil
@@ -31,7 +31,9 @@ return {
 			else nil
 		-- TODO: Store how long until the timer finishes. Better Load handling with this.
 		
-		self.BUTTON.Main.Position = self.Model.Base:GetPivot().Position + if self.InternalState.IsActivated then Vector3.new(0, 0.7, 0) else Vector3.new(0, 0.85, 0)
+		local offset = if self.InternalState.IsActivated then 0.5 else 0.75
+		self.BUTTON.Weld.C1 = CFrame.new(0, offset, 0)
+		
 		self.Nodes.Signals["Output"] = self.InternalState.IsActivated
 	end,
 	
@@ -51,7 +53,9 @@ return {
 			self.InternalState.IsActivated = false
 		end
 		
-		self.BUTTON.Main.Position = self.Model.Base:GetPivot().Position + if self.InternalState.IsActivated then Vector3.new(0, 0.7, 0) else Vector3.new(0, 0.85, 0)
+		local height = if self.InternalState.IsActivated then 0.5 else 0.75
+		self.BUTTON.Weld.C1 = CFrame.new(0, height, 0)
+		
 		self.Nodes.Signals["Output"] = self.InternalState.IsActivated
 	end,
 	

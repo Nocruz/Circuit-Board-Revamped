@@ -23,7 +23,7 @@ return {
 		end
 		
 		self.SWITCH = {}
-		self.SWITCH.Main = self.Model.Main
+		self.SWITCH.Weld = self.Model.Main.Weld
 		self.SWITCH.ClickDetector = if self.OwnerID ~= 0
 			then (function() local c = Instance.new("ClickDetector"); c.Parent = self.Model; return c end)()
 			else nil
@@ -31,7 +31,8 @@ return {
 			then self.SWITCH.ClickDetector.MouseClick:Connect(function(player) Updates.Propagate(self.ID, { Source = "Interaction", Player = player }) end)
 			else nil
 		
-		self.SWITCH.Main.Position = self.Model.Base:GetPivot().Position + if self.InternalState.IsActivated then Vector3.new(0, 0.7, 0) else Vector3.new(0, 0.85, 0)
+		local offset = if self.InternalState.IsActivated then 0.5 else 0.75
+		self.SWITCH.Weld.C1 = CFrame.new(0, offset, 0)
 	end,
 	
 	Process = function(self, payload)
@@ -45,7 +46,8 @@ return {
 			end
 			self.InternalState.LastInput = input
 		end
-		self.SWITCH.Main.Position = self.Model.Base:GetPivot().Position + if self.InternalState.IsActivated then Vector3.new(0, 0.7, 0) else Vector3.new(0, 0.85, 0)
+		local height = if self.InternalState.IsActivated then 0.5 else 0.75
+		self.SWITCH.Weld.C1 = CFrame.new(0, height, 0)
 		self.Nodes.Signals["Output"] = self.InternalState.IsActivated
 		
 		if self.Nodes.Signals["Output"] then

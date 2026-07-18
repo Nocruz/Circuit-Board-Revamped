@@ -40,14 +40,11 @@ return {
 	
 	Setup = function(self)
 		self.PRESSURE = {}
-		self.PRESSURE.Main = self.Model.Main :: Part
+		self.PRESSURE.Weld = self.Model.Main.Weld
 		self.PRESSURE.Hitbox = self.Model.Hitbox :: Part
 		self.PRESSURE.IsActiveLoop = false
 		
-		if self.OwnerID == 0 then
-			self.PRESSURE.Main.Position = self.Model.Base:GetPivot().Position + Vector3.new(0, 0.85, 0)
-			return
-		end
+		if self.OwnerID == 0 then return end
 		
 		self.PRESSURE.IsActiveLoop = true
 		task.spawn(function()
@@ -73,7 +70,10 @@ return {
 		end)
 		
 		self.Nodes.Signals["Output"] = checkForPlayers(self.PRESSURE.Hitbox) > 0
-		self.PRESSURE.Main.Position = self.Model.Base:GetPivot().Position + if self.Nodes.Signals["Output"] then Vector3.new(0, 0.7, 0) else Vector3.new(0, 0.85, 0)
+		
+		local offset = if self.Nodes.Signals["Output"] then 0.5 else 0.75
+		self.PRESSURE.Weld.C1 = CFrame.new(0, offset, 0)
+		
 		if self.Nodes.Signals["Output"] then self:QueueSound("Activate Activator") end
 	end,
 	
@@ -89,7 +89,8 @@ return {
 			self.Nodes.Signals["Output"] = false
 		end
 		
-		self.PRESSURE.Main.Position = self.Model.Base:GetPivot().Position + if self.Nodes.Signals["Output"] then Vector3.new(0, 0.7, 0) else Vector3.new(0, 0.85, 0)
+		local offset = if self.Nodes.Signals["Output"] then 0.5 else 0.75
+		self.PRESSURE.Weld.C1 = CFrame.new(0, offset, 0)
 	end,
 	
 	Destroy = function(self)
