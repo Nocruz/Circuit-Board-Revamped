@@ -107,10 +107,16 @@ function State:MoveGhostToPointer()
 		return
 	end
 	
-	local cframe = GridService.fromCFrame(CFrame.new(PointerService.HitPosition) * CFrame.Angles(0, math.rad(self.Rotation), 0))
+	-- Get the GridCFrame, and offset it by one unit in Y if looking down
+	local cframe = GridService.fromCFrame(CFrame.new(position) * self.Orientation)
+	if self.Orientation.UpVector.Y < 0.5 then cframe = cframe:Move(cframe.Position + Vector3.yAxis) end
+	
 	if PointerService.HoveredGate then
-		cframe = GridService.Move(cframe, cframe.Position + GridService.getSurfaceNormal(PointerService.HitPosition, GridService.fromCFrame(PointerService.HoveredGate:GetPivot())))
+		local hoveredCFrame = GridService.fromCFrame(PointerService.HoveredGate:GetPivot())
+		local normal = hoveredCFrame:GetSurfaceNormal(position)
+		cframe = cframe:Move(cframe.Position + normal)
 	end
+	
 	self.Ghost:PivotTo(cframe._cframe)
 end
 
@@ -133,7 +139,7 @@ function State:CleanUpGhost()
 	end
 	
 	self.Gate = nil
-	self.Rotation = 0
+	self.Orientation = CFrame.identity
 	self.Active = false
 end
 
@@ -142,7 +148,7 @@ end
 function State.new(player: Player)
 	local self = setmetatable({}, State)
 	self.Player = player
-	self.Rotation = 0
+	self.Orientation = CFrame.identity
 	
 	self.BaseHighlight = nil
 	self.GridTexture = nil
@@ -212,9 +218,8 @@ function State:Activated()
 		self.Ghost.Parent = Workspace
 		PointerService.AddToFilter(self.Ghost)
 		
-		-- Rotate the preview model
-		local _, radians = GridService.fromCFrame(self.Ghost:GetPivot())._cframe:ToOrientation()
-		self.Rotation = math.deg(radians)
+		-- Store the snapped rotation of the original gate
+		self.Orientation = GridService.fromCFrame(self.Ghost:GetPivot()).Rotation
 		
 		self:showUIs()
 		self.RenderConnection = RunService.RenderStepped:Connect(function()
@@ -223,9 +228,13 @@ function State:Activated()
 		
 		self.RotationConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			if gameProcessed or not self.Active then return end
-		
+			
 			if input.KeyCode == Enum.KeyCode.R then
-				self.Rotation = (self.Rotation + 90) % 360
+				self.Orientation *= CFrame.Angles(0, math.rad(90), 0)
+			elseif input.KeyCode == Enum.KeyCode.T then
+				self.Orientation *= CFrame.Angles(math.rad(90), 0, 0)
+			elseif input.KeyCode == Enum.KeyCode.Y then
+				self.Orientation *= CFrame.Angles(0, 0, math.rad(90))
 			end
 		end)
 		
