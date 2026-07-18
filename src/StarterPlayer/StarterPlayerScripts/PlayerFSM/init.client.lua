@@ -11,9 +11,11 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterPlayer = game:GetService("StarterPlayer")
 local UserInputService = game:GetService("UserInputService")
 
 -- Effects
+local PointerService = require(StarterPlayer.StarterPlayerScripts.Services.PointerService)
 local EffectsService = require(ReplicatedStorage:WaitForChild("EffectsService"))
 
 -- References
@@ -93,20 +95,14 @@ end
 player.CharacterAdded:Connect(initializeCharacter)
 if player.Character then initializeCharacter(player.Character) end
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		if currentState and currentState.Activated then
-			currentState:Activated()
-		end
+PointerService.OnActivated:Connect(function()
+	if currentState and currentState.Activated then
+		currentState:Activated()
 	end
 end)
 
-UserInputService.InputEnded:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		if currentState and currentState.Deactivated then
-			currentState:Deactivated()
-		end
+PointerService.OnDeactivated:Connect(function()
+	if currentState and currentState.Deactivated then
+		currentState:Deactivated()
 	end
 end)

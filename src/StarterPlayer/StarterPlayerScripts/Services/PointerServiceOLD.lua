@@ -1,13 +1,12 @@
 --[[ POINTER SERVICE
 		Handles all pointer related operations.
-		Supports Mouse and Touch.
+		Only supports Mouse for now.
 ]]
 
 -- Requires and Services
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
-local GuiService = game:GetService("GuiService")
 local PhysicsService = game:GetService("PhysicsService")
 local UserInputService = game:GetService("UserInputService")
 
@@ -76,16 +75,6 @@ local wiresFolder = Workspace:WaitForChild("Wires")
 assert(wiresFolder ~= nil, "No Wires! Forgot to update this script?")
 ignoreInstance(wiresFolder)
 wiresFolder.DescendantAdded:Connect(function(descendant) ignoreInstance(descendant) end)
-
--- Held for the whole gesture. Its .Position keeps reflecting the latest touch
--- data even between TouchMoved events, so RenderStepped can poll it directly
--- instead of waiting on event dispatch (which can lag behind the render rate).
-local activeTouch: InputObject? = nil
-
--- Camera we froze to lock panning, and the CameraType it had before we froze it
--- (so we restore whatever it actually was, not just assume Custom).
-local lockedCamera: Camera? = nil
-local lockedCameraPreviousType: Enum.CameraType? = nil
 
 -- ----------------------------- ------------ DEBUGGING UTILS ------------ -----------------------------
 
@@ -171,8 +160,6 @@ local hoverChanged = Instance.new("BindableEvent")
 local gateHovered = Instance.new("BindableEvent")
 local nodeHovered = Instance.new("BindableEvent")
 local interacted = Instance.new("BindableEvent")
-local activated = Instance.new("BindableEvent")
-local deactivated = Instance.new("BindableEvent")
 
 local PointerService = {
 	AddToFilter = ignoreInstance,
@@ -188,33 +175,37 @@ local PointerService = {
 	OnGateHovered = gateHovered.Event,
 	OnNodeHovered = nodeHovered.Event,
 	OnInteraction = interacted.Event,
-	OnActivated = activated.Event,     -- Fires on TouchBegan / MouseButton1 Down (like Tool.Activated)
-	OnDeactivated = deactivated.Event, -- Fires on TouchEnded / MouseButton1 Up (like Tool.Deactivated)
 }
 
--- ----------------------------- ------------- HOVER UPDATE --------------- -----------------------------
+-- ----------------------------- ------------ INPUT DETECTION ----------- -----------------------------
 
--- Shared by both Mouse and Touch. Casts a ray from the given screen position and
--- updates all Hovered* fields + related events. Called every RenderStepped frame
--- (for both input types) so hover tracking never lags behind the actual cursor/finger.
-local function updateHoverFromScreenPosition(screenPosition: Vector2)
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		interacted:Fire(
+			PointerService.HoveredInstance,
+			PointerService.HoveredGate,
+			PointerService.HoveredNode
+		)
+	end
+end)
+
+RunService.RenderStepped:Connect(function()
 	local camera = Workspace.CurrentCamera
 	if not camera then return end
 	
-	local inset = GuiService:GetGuiInset()
-	local adjustedPosition = screenPosition + if activeTouch then inset else Vector2.zero
-	
-	local ray = camera:ViewportPointToRay(adjustedPosition.X, adjustedPosition.Y)
+	local ray = camera:ViewportPointToRay(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y)
 	local currentResult = Workspace:Raycast(ray.Origin, ray.Direction * MAX_RAY_DISTANCE, rayParams)
 	
 	local instance = (currentResult and currentResult.Instance) or nil
 	local position = (currentResult and currentResult.Position) or nil
 	PointerService.HitPosition = position
 	
-	-- Translate the debug ball to cursor/finger
+	-- Traslate the debug ball to cursor
 	if IS_DEBUG_ACTIVE then
 		if position then
-			debugBall.Position = position
+			debugBall.Position = currentResult.Position
 			debugBall.Transparency = 0.5
 		else
 			debugBall.Transparency = 1
@@ -244,7 +235,7 @@ local function updateHoverFromScreenPosition(screenPosition: Vector2)
 		hoverChanged:Fire(instance, gate, node)
 		return
 	end
-	
+
 	-- If position changed, but on the same part, update the closest node
 	if PointerService.HoveredGate then
 		local node = closestNodeToPointerOfPointedGate(PointerService.HoveredGate, position)
@@ -253,101 +244,6 @@ local function updateHoverFromScreenPosition(screenPosition: Vector2)
 			if IS_DEBUG_ACTIVE then print("Changed hovered node to: " .. ((node and node.Name) or "nil")) end
 			if node then nodeHovered:Fire(node) end
 		end
-	end
-end
-
-local function fireActivated(inputType: Enum.UserInputType)
-	activated:Fire(
-		PointerService.HoveredInstance,
-		PointerService.HoveredGate,
-		PointerService.HoveredNode,
-		inputType
-	)
-end
-
-local function fireDeactivated(inputType: Enum.UserInputType)
-	deactivated:Fire(
-		PointerService.HoveredInstance,
-		PointerService.HoveredGate,
-		PointerService.HoveredNode,
-		inputType
-	)
-end
-
--- ----------------------------- ------------ INPUT DETECTION ----------- -----------------------------
-
--- ===== Mouse =====
-
-local mouseActivated = false
-
-UserInputService.InputBegan:Connect(function(input, gp)
-	if gp then return end
-	
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		interacted:Fire(
-			PointerService.HoveredInstance,
-			PointerService.HoveredGate,
-			PointerService.HoveredNode
-		)
-		mouseActivated = true
-		fireActivated(Enum.UserInputType.MouseButton1)
-	end
-end)
-
-UserInputService.InputEnded:Connect(function(input, _gp)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 and mouseActivated then
-		mouseActivated = false
-		fireDeactivated(Enum.UserInputType.MouseButton1)
-	end
-end)
-
--- ===== Touch =====
-
-UserInputService.TouchStarted:Connect(function(touch, gp)
-	if gp then return end
-	if activeTouch then return end -- Only track one touch at a time
-	
-	activeTouch = touch
-	
-	updateHoverFromScreenPosition(Vector2.new(touch.Position.X, touch.Position.Y))
-	
-	-- Freeze the camera while dragging over a Gate, so the same finger drag that's
-	-- repositioning the ghost doesn't also pan/rotate the camera. CameraType.Scriptable
-	-- makes the default camera scripts stop touching the camera entirely; it stays put
-	-- until we hand control back.
-	if PointerService.HoveredGate then
-		local camera = Workspace.CurrentCamera
-		if camera then
-			lockedCamera = camera
-			lockedCameraPreviousType = camera.CameraType
-			camera.CameraType = Enum.CameraType.Scriptable
-		end
-	end
-	
-	fireActivated(Enum.UserInputType.Touch)
-end)
-
-UserInputService.TouchEnded:Connect(function(touch, _gp)
-	if touch ~= activeTouch then return end
-	
-	updateHoverFromScreenPosition(Vector2.new(touch.Position.X, touch.Position.Y))
-	
-	if lockedCamera then
-		lockedCamera.CameraType = lockedCameraPreviousType or Enum.CameraType.Custom
-		lockedCamera = nil
-		lockedCameraPreviousType = nil
-	end
-	
-	fireDeactivated(Enum.UserInputType.Touch)
-	activeTouch = nil
-end)
-
-RunService.RenderStepped:Connect(function()
-	if activeTouch then
-		-- Poll the live touch every frame instead of relying on TouchMoved dispatch timing
-		updateHoverFromScreenPosition(Vector2.new(activeTouch.Position.X, activeTouch.Position.Y))
-	else
-		updateHoverFromScreenPosition(UserInputService:GetMouseLocation())
 	end
 end)
 
