@@ -5,7 +5,11 @@ return {
 	Nodes = { Outputs = { "Output" }, Inputs = { "Input" } },
 	DefaultVisuals = {
 		MainMaterial = Enum.Material.Sand,
-		MainColor = Color3.fromRGB(60, 60, 60),
+		MainColor = Color3.fromRGB(0, 0, 34)
+	},
+	
+	AttributeData = {
+		["Duration"] = { Default = 1, Predicates = { function(value) return value >= 0 end, } },
 	},
 	
 	Setup = function(self, state)
@@ -20,6 +24,10 @@ return {
 				PulseActive = false,
 				LastInput = false
 			}
+		end
+		
+		if self.InternalState.PulseActive and not Updates.IsWakeupScheduled(self.ID, "ResetPulse") then
+			Updates.ScheduleWakeup(self.ID, self.Attributes.Duration, { Source = "ResetPulse" }, "ResetPulse")
 		end
 	end,
 	
@@ -43,7 +51,7 @@ return {
 			self.InternalState.LastInput = current
 			self.InternalState.PulseActive = true
 			self.Nodes.Signals["Output"] = true
-			Updates.ScheduleWakeup(self.ID, 0, { Source = "ResetPulse" }, "ResetPulse")
+			Updates.ScheduleWakeup(self.ID, self.Attributes.Duration, { Source = "ResetPulse" }, "ResetPulse")
 			return
 		end
 		

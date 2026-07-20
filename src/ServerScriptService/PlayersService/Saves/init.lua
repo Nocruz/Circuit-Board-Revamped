@@ -17,7 +17,7 @@ local GridService = require(ReplicatedStorage.GridService)
 local Serializer = require(script.Serializer)
 
 -- Database
-local SaveDataStore = DataStoreService:GetDataStore("TEST_STORE")
+local SaveDataStore = DataStoreService:GetDataStore("TEST_STUFF")
 
 -- Constants
 local SAVE_VERSION = 3 -- Used if Specifications change names or whatever
